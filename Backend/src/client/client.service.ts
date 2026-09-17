@@ -116,8 +116,10 @@ export class ClientService {
     if(!client){
       throw new NotFoundException('Cliente inexistente');
     }
-    await this.clientRepository.remove(client);
-    return { message: 'Cliente eliminado exitosamente' };
+
+    client.isActive = false;
+    await this.clientRepository.save(client);
+    return { message: 'Cliente desactivado exitosamente', client };
     
   }
 }

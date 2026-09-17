@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageSpinner } from '@/components/ui/Spinner'
+import { Pagination } from '@/components/ui/Pagination'
 import { formatCurrency } from '@/lib/utils'
 import { PlusIcon, PencilSquareIcon, TagIcon } from '@heroicons/react/24/outline'
 import { useForm, type SubmitHandler } from 'react-hook-form'
@@ -20,13 +21,13 @@ import toast from 'react-hot-toast'
 import type { Product } from '@/types'
 
 const schema = z.object({
-  name: z.string().min(2, 'Mínimo 2 caracteres'),
-  categoryId: z.string().min(1, 'Seleccione una categoría'),
-  description: z.string().min(5, 'Mínimo 5 caracteres'),
+  name: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(1, 'El nombre del producto es obligatorio.')),
+  categoryId: z.string().min(1, 'Seleccione una categoría.'),
+  description: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(5, 'La descripción es obligatoria.')),
   imageFile: z.any().optional(),
-  price: z.coerce.number().positive('Debe ser mayor a 0'),
-  stock: z.coerce.number().int().min(0, 'No puede ser negativo'),
-  minStock: z.coerce.number().int().positive('Mínimo 1'),
+  price: z.coerce.number({ invalid_type_error: 'El precio debe ser un número válido.' }).refine((v) => !Number.isNaN(v), { message: 'El precio es obligatorio.' }).refine((v) => v > 0, { message: 'El precio debe ser mayor que 0.' }),
+  stock: z.coerce.number({ invalid_type_error: 'El stock debe ser un número válido.' }).int({ message: 'El stock debe ser un número entero.' }).min(0, 'El stock no puede ser negativo.'),
+  minStock: z.coerce.number({ invalid_type_error: 'El stock mínimo debe ser un número válido.' }).int().min(1, 'El stock mínimo debe ser al menos 1.'),
   toppingIds: z.array(z.string()).default([]),
 })
 type FormData = z.infer<typeof schema>
@@ -36,6 +37,8 @@ export const ProductsPage: FC = () => {
   const [isOpen, setIsOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const pageSize = 8
 
   const { data: products = [], isLoading } = useQuery({ queryKey: ['products'], queryFn: productService.getAll })
   const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: categoryService.getActive })
@@ -104,6 +107,7 @@ export const ProductsPage: FC = () => {
 
     return normalizedSearch.length === 0 || [name, categoryName, description].some((value) => value.includes(normalizedSearch))
   })
+  const paginatedProducts = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   if (isLoading) return <PageSpinner />
 
@@ -115,43 +119,48 @@ export const ProductsPage: FC = () => {
       </div>
 
       <div className="max-w-xs">
-        <Input placeholder="Buscar productos..." value={search} onChange={e => setSearch(e.target.value)} />
+        <Input placeholder="Buscar productos..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
       </div>
 
       {filtered.length === 0 ? (
         <EmptyState icon={<TagIcon className="h-10 w-10" />} title="No hay productos" description="Crea el primer producto del catálogo" action={<Button onClick={openCreate} size="sm">Nuevo producto</Button>} />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map(p => (
-            <div key={p.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-              <div className="aspect-video bg-gray-100 overflow-hidden">
-                <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" onError={e => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=400' }} />
-              </div>
-              <div className="p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm truncate">{p.name}</p>
-                    <p className="text-xs text-gray-400">{p.category.name}</p>
+        <div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {paginatedProducts.map(p => (
+              <div key={p.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                <div className="aspect-video bg-gray-100 overflow-hidden">
+                  <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" onError={e => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=400' }} />
+                </div>
+                <div className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{p.name}</p>
+                      <p className="text-xs text-gray-400">{p.category.name}</p>
+                    </div>
+                    <Badge variant={p.isActive ? 'success' : 'default'}>{p.isActive ? 'Activo' : 'Inactivo'}</Badge>
                   </div>
-                  <Badge variant={p.isActive ? 'success' : 'default'}>{p.isActive ? 'Activo' : 'Inactivo'}</Badge>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="font-semibold text-primary-600">{formatCurrency(p.price)}</span>
-                  <span className={`text-xs ${p.stock <= p.minStock ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
-                    Stock: {p.stock}
-                  </span>
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <Button variant="secondary" size="sm" className="flex-1" onClick={() => openEdit(p)}>
-                    <PencilSquareIcon className="h-3.5 w-3.5" />Editar
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => toggleMutation.mutate(p.id)}>
-                    {p.isActive ? 'Desact.' : 'Activar'}
-                  </Button>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="font-semibold text-primary-600">{formatCurrency(p.price)}</span>
+                    <span className={`text-xs ${p.stock <= p.minStock ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                      Stock: {p.stock}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <Button variant="secondary" size="sm" className="flex-1" onClick={() => openEdit(p)}>
+                      <PencilSquareIcon className="h-3.5 w-3.5" />Editar
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => toggleMutation.mutate(p.id)}>
+                      {p.isActive ? 'Desact.' : 'Activar'}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <div className="border-t border-gray-100">
+            <Pagination page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} />
+          </div>
         </div>
       )}
 

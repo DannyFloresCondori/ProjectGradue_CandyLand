@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { PageSpinner } from '@/components/ui/Spinner'
+import { Pagination } from '@/components/ui/Pagination'
 import { formatDate } from '@/lib/utils'
 import { PencilSquareIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
@@ -16,8 +17,11 @@ import type { Product } from '@/types'
 export const InventoryPage: FC = () => {
   const qc = useQueryClient()
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
-  const [newStock, setNewStock] = useState('')
+  const [stockIncrease, setStockIncrease] = useState('')
   const [newMinStock, setNewMinStock] = useState('')
+  const [lowStockPage, setLowStockPage] = useState(1)
+  const [alertsPage, setAlertsPage] = useState(1)
+  const pageSize = 8
 
   const { data: lowStock = [], isLoading: loadingLow } = useQuery({
     queryKey: ['low-stock'], queryFn: inventoryService.getLowStockProducts,
@@ -27,7 +31,14 @@ export const InventoryPage: FC = () => {
   })
 
   const updateStockMut = useMutation({
-    mutationFn: ({ id, stock }: { id: string; stock: number }) => inventoryService.updateStock(id, stock),
+    mutationFn: async ({ id, stock, increase }: { id: string; stock: number; increase: number }) => {
+      const product = await inventoryService.updateStock(id, stock)
+      const alert = alerts.find((item) => item.productId === id && !item.isResolved)
+      if (alert && increase > 0) {
+        await inventoryService.recordStockIncrease(alert.id, increase, stock)
+      }
+      return product
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['low-stock'] })
       qc.invalidateQueries({ queryKey: ['alerts'] })
@@ -51,12 +62,15 @@ export const InventoryPage: FC = () => {
 
   const handleSave = () => {
     if (!editingProduct) return
-    const stock = parseInt(newStock)
-    if (isNaN(stock) || stock < 0) { toast.error('Stock inválido'); return }
-    updateStockMut.mutate({ id: editingProduct.id, stock })
+    const increase = parseInt(stockIncrease)
+    if (isNaN(increase) || increase < 1) { toast.error('La cantidad a aumentar debe ser mayor que 0'); return }
+    updateStockMut.mutate({ id: editingProduct.id, stock: editingProduct.stock + increase, increase })
   }
 
   if (loadingLow || loadingAlerts) return <PageSpinner />
+
+  const paginatedLowStock = lowStock.slice((lowStockPage - 1) * pageSize, lowStockPage * pageSize)
+  const paginatedAlerts = alerts.slice((alertsPage - 1) * pageSize, alertsPage * pageSize)
 
   return (
     <div className="space-y-6">
@@ -85,7 +99,7 @@ export const InventoryPage: FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {lowStock.map(p => (
+                {paginatedLowStock.map(p => (
                   <tr key={p.id} className="hover:bg-gray-50 bg-red-50/30">
                     <td className="px-4 py-3 font-medium">{p.name}</td>
                     <td className="px-4 py-3 text-gray-500">{p.category.name}</td>
@@ -94,7 +108,7 @@ export const InventoryPage: FC = () => {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{p.minStock}</td>
                     <td className="px-4 py-3 text-right">
-                      <Button variant="secondary" size="sm" onClick={() => { setEditingProduct(p); setNewStock(String(p.stock)); setNewMinStock(String(p.minStock)) }}>
+                      <Button variant="secondary" size="sm" onClick={() => { setEditingProduct(p); setStockIncrease(''); setNewMinStock(String(p.minStock)) }}>
                         <PencilSquareIcon className="h-4 w-4" />Actualizar
                       </Button>
                     </td>
@@ -103,6 +117,9 @@ export const InventoryPage: FC = () => {
               </tbody>
             </table>
           )}
+          <div className="px-4 border-t border-gray-100">
+            <Pagination page={lowStockPage} pageSize={pageSize} total={lowStock.length} onPageChange={setLowStockPage} />
+          </div>
         </CardBody>
       </Card>
 
@@ -118,13 +135,14 @@ export const InventoryPage: FC = () => {
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Producto</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Stock</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Mínimo</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Stock aumentado</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Estado</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Fecha alerta</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">Acción</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {alerts.map(a => (
+              {paginatedAlerts.map(a => (
                 <tr key={a.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium">
                     <div>{a.productName}</div>
@@ -134,6 +152,7 @@ export const InventoryPage: FC = () => {
                   </td>
                   <td className="px-4 py-3 text-red-600 font-bold">{a.currentStock}</td>
                   <td className="px-4 py-3 text-gray-600">{a.minStock}</td>
+                  <td className="px-4 py-3 font-semibold text-emerald-700">+{a.stockQuantity}</td>
                   <td className="px-4 py-3">
                     <Badge variant={a.isResolved ? 'success' : 'error'}>{a.isResolved ? 'Resuelta' : 'Activa'}</Badge>
                   </td>
@@ -149,6 +168,9 @@ export const InventoryPage: FC = () => {
               ))}
             </tbody>
           </table>
+            <div className="px-4 border-t border-gray-100">
+              <Pagination page={alertsPage} pageSize={pageSize} total={alerts.length} onPageChange={setAlertsPage} />
+            </div>
         </CardBody>
       </Card>
 
@@ -156,7 +178,8 @@ export const InventoryPage: FC = () => {
         {editingProduct && (
           <div className="space-y-4">
             <p className="text-sm font-medium">{editingProduct.name}</p>
-            <Input label="Nuevo stock" type="number" min="0" value={newStock} onChange={e => setNewStock(e.target.value)} />
+            <Input label="Cantidad a aumentar" type="number" min="1" value={stockIncrease} onChange={e => setStockIncrease(e.target.value)} />
+            <p className="text-sm text-gray-500">Stock actual: <span className="font-semibold text-gray-900">{editingProduct.stock}</span>. Nuevo stock: <span className="font-semibold text-emerald-700">{editingProduct.stock + (parseInt(stockIncrease) || 0)}</span></p>
             <Input label="Stock mínimo" type="number" min="1" value={newMinStock} onChange={e => setNewMinStock(e.target.value)} />
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setEditingProduct(null)}>Cancelar</Button>

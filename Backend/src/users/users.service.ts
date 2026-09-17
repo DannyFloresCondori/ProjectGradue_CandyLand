@@ -8,8 +8,9 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { Role } from 'src/roles/entities/role.entity';
+import { Sale, SalesStatus } from 'src/sale/entities/sale.entity';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -19,6 +20,8 @@ export class UsersService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
+    @InjectRepository(Sale)
+    private readonly saleRepository: Repository<Sale>,
   ) {}
   async create(createUserDto: CreateUserDto) {
     const { roleId, password, ...date } = createUserDto;
@@ -58,7 +61,8 @@ export class UsersService {
   }
 
   async findAll() {
-    return await this.userRepository.find({ relations: ['role'] });
+    const users = await this.userRepository.find({ relations: ['role'] });
+    return Promise.all(users.map((user) => this.withSalesCount(user)));
   }
 
   async findOne(id: string) {
@@ -66,7 +70,18 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException(`Usuario con id ${id} no encontrado`);
     }
-    return user;
+    return this.withSalesCount(user);
+  }
+
+  private async withSalesCount(user: User) {
+    const salesCount = await this.saleRepository.count({
+      where: {
+        user: { id: user.id },
+        status: Not(SalesStatus.CANCELED),
+      },
+    });
+
+    return { ...user, salesCount };
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {

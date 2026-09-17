@@ -17,7 +17,7 @@ import toast from 'react-hot-toast'
 import type { Topping } from '@/types'
 
 const schema = z.object({
-  name: z.string().min(2, 'Mínimo 2 caracteres'),
+  name: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(1, 'El nombre del topping es obligatorio.')),
 })
 type FormData = z.infer<typeof schema>
 

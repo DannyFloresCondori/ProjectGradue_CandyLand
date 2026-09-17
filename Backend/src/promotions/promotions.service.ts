@@ -20,6 +20,35 @@ export class PromotionsService {
     private readonly productRepository: Repository<Product>,
   ) {}
 
+  private validatePromotionDates(
+    startValue: Date | string | null | undefined,
+    endValue: Date | string,
+  ) {
+    const today = new Date().toISOString().slice(0, 10);
+    const endDate = new Date(endValue).toISOString().slice(0, 10);
+    const startDate = startValue
+      ? new Date(startValue).toISOString().slice(0, 10)
+      : today;
+
+    if (startDate < today) {
+      throw new BadRequestException('Promotion start date must be today or later');
+    }
+
+    if (endDate < startDate) {
+      throw new BadRequestException('Promotion end date must be on or after the start date');
+    }
+
+    const duration = Math.round(
+      (new Date(`${endDate}T00:00:00Z`).getTime() -
+        new Date(`${startDate}T00:00:00Z`).getTime()) /
+        86400000,
+    );
+
+    if (duration > 6) {
+      throw new BadRequestException('Promotion duration cannot exceed 7 days');
+    }
+  }
+
   private async syncPromotionStatus(promotion: Promotion): Promise<Promotion> {
     const now = new Date();
     const endDate = new Date(promotion.end_date);
@@ -33,6 +62,7 @@ export class PromotionsService {
   }
 
   async create(createPromotionDto: CreatePromotionDto) {
+    this.validatePromotionDates(createPromotionDto.start_date, createPromotionDto.end_date);
     
     const { productIds, type, value, isActive, ...promotionData } =
       createPromotionDto;
@@ -153,6 +183,13 @@ async update(
   if (!promotion) {
     throw new NotFoundException(
       `Promotion with id ${id} not found`,
+    );
+  }
+
+  if (updatePromotionDto.start_date !== undefined || updatePromotionDto.end_date !== undefined) {
+    this.validatePromotionDates(
+      updatePromotionDto.start_date ?? promotion.start_date,
+      updatePromotionDto.end_date ?? promotion.end_date,
     );
   }
 

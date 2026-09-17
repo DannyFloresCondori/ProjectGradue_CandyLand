@@ -10,14 +10,14 @@ import { Select } from '@/components/ui/Select'
 import { Card, CardBody } from '@/components/ui/Card'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { formatDate } from '@/lib/utils'
-import { PlusIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
+import { EyeIcon, PlusIcon } from '@heroicons/react/24/outline'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import toast from 'react-hot-toast'
 import type { User } from '@/types'
 
-const ROLE_LABELS: Record<string, string> = { admin: 'Administrador', cajero: 'Cajero', inventario: 'Inventario' }
+const ROLE_LABELS: Record<string, string> = { admin: 'Administrador', cajero: 'Cajero', inventario: 'Inventario', cocina: 'Cocina' }
 
 const schema = z.object({
   roleId: z.string().min(1, 'Seleccione un rol'),
@@ -56,6 +56,7 @@ export const UsersPage: FC = () => {
   const qc = useQueryClient()
   const [isOpen, setIsOpen] = useState(false)
   const [editing, setEditing] = useState<User | null>(null)
+  const [viewing, setViewing] = useState<User | null>(null)
 
   const { data: users = [], isLoading } = useQuery({ queryKey: ['users'], queryFn: userService.getAll })
   const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: userService.getRoles })
@@ -67,6 +68,7 @@ export const UsersPage: FC = () => {
 
   const openCreate = () => { reset(); setEditing(null); setIsOpen(true) }
   const closeModal = () => { setIsOpen(false); setEditing(null); reset() }
+  const closeDetails = () => setViewing(null)
   const onSubmit = (data: FormData) => createMut.mutate(data)
 
   if (isLoading) return <PageSpinner />
@@ -108,6 +110,15 @@ export const UsersPage: FC = () => {
                 <td className="px-4 py-3"><Badge variant={u.isActive ? 'success' : 'default'}>{u.isActive ? 'Activo' : 'Inactivo'}</Badge></td>
                 <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">{formatDate(u.createdAt)}</td>
                 <td className="px-4 py-3 text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setViewing(u)}
+                    title={`Ver datos de ${u.fullName}`}
+                    aria-label={`Ver datos de ${u.fullName}`}
+                  >
+                    <EyeIcon className="h-4 w-4" />
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => toggleMut.mutate(u.id)}>
                     {u.isActive ? 'Desactivar' : 'Activar'}
                   </Button>
@@ -136,6 +147,33 @@ export const UsersPage: FC = () => {
             <Button type="submit" isLoading={isSubmitting}>Crear usuario</Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal isOpen={!!viewing} onClose={closeDetails} title="Datos del usuario" size="md">
+        {viewing && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-lg bg-primary-50 p-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-100">
+                <span className="text-lg font-bold text-primary-700">{viewing.fullName.charAt(0)}</span>
+              </div>
+              <div className="min-w-0">
+                <h3 className="truncate text-lg font-semibold text-gray-900">{viewing.fullName}</h3>
+              </div>
+            </div>
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-gray-100 p-3 sm:col-span-2"><dt className="text-xs text-gray-500">Correo electrónico</dt><dd className="mt-1 wrap-break-word font-medium text-gray-900">{viewing.email || 'No registrado'}</dd></div>
+              <div className="rounded-lg border border-gray-100 p-3"><dt className="text-xs text-gray-500">Nombre completo</dt><dd className="mt-1 font-medium text-gray-900">{viewing.fullName || 'No registrado'}</dd></div>
+              <div className="rounded-lg border border-gray-100 p-3"><dt className="text-xs text-gray-500">Teléfono</dt><dd className="mt-1 font-medium text-gray-900">{viewing.phone || 'No registrado'}</dd></div>
+              <div className="rounded-lg border border-gray-100 p-3"><dt className="text-xs text-gray-500">Rol</dt><dd className="mt-1"><Badge variant="info">{ROLE_LABELS[viewing.role.name] ?? viewing.role.name}</Badge></dd></div>
+              <div className="rounded-lg border border-gray-100 p-3"><dt className="text-xs text-gray-500">Estado</dt><dd className="mt-1"><Badge variant={viewing.isActive ? 'success' : 'default'}>{viewing.isActive ? 'Activo' : 'Inactivo'}</Badge></dd></div>
+              <div className="rounded-lg border border-gray-100 p-3"><dt className="text-xs text-gray-500">Fecha de creación</dt><dd className="mt-1 font-medium text-gray-900">{formatDate(viewing.createdAt)}</dd></div>
+              {['admin', 'cajero'].includes(viewing.role.name.toLowerCase()) && (
+                <div className="rounded-lg border border-gray-100 p-3"><dt className="text-xs text-gray-500">Ventas realizadas</dt><dd className="mt-1 font-medium text-gray-900">{viewing.salesCount}</dd></div>
+              )}
+            </dl>
+            <div className="flex justify-end border-t border-gray-100 pt-4"><Button variant="secondary" onClick={closeDetails}>Cerrar</Button></div>
+          </div>
+        )}
       </Modal>
     </div>
   )

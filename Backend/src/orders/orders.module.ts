@@ -11,6 +11,7 @@ import { Sale } from 'src/sale/entities/sale.entity';
 import { SaleDetail } from 'src/sale_detail/entities/sale_detail.entity';
 import { StockAlert } from 'src/stock_alert/entities/stock_alert.entity';
 import { Topping } from 'src/topping/entities/topping.entity';
+import { OrdersGateway } from './orders.gateway';
 
 @Module({
   imports: [
@@ -27,6 +28,6 @@ import { Topping } from 'src/topping/entities/topping.entity';
     ]),
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrdersGateway],
 })
 export class OrdersModule {}

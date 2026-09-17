@@ -24,7 +24,7 @@ function normalizeSale(item: any): Sale {
     total: Number(item.total ?? 0),
     paymentType: normalizePaymentType(item.payment_method ?? item.paymentType),
     status: item.status === 'canceled' ? 'canceled' : 'delivered',
-    cancellationReason: item.cancellation_reason ?? item.cancellationReason ?? null,
+    cancellationReason: item.cancellation_reason ?? item.cancellationReason ?? item.reason ?? null,
     details: Array.isArray(item.saleDetail ?? item.details) ? (item.saleDetail ?? item.details).map((detail: any) => ({
       id: detail.id,
       saleId: detail.saleId ?? item.id,

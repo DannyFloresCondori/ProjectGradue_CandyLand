@@ -16,12 +16,36 @@ import { z } from 'zod'
 import toast from 'react-hot-toast'
 import type { Promotion, PromotionInput } from '@/types'
 
+const getToday = () => new Date().toISOString().slice(0, 10)
+const toDateOnly = (value?: string) => value?.slice(0, 10) ?? ''
+const addDays = (date: string, days: number) => {
+  const result = new Date(`${toDateOnly(date) || getToday()}T00:00:00Z`)
+  result.setUTCDate(result.getUTCDate() + days)
+  return result.toISOString().slice(0, 10)
+}
+const dayDifference = (start: string, end: string) => {
+  const startDate = new Date(`${toDateOnly(start)}T00:00:00Z`)
+  const endDate = new Date(`${toDateOnly(end)}T00:00:00Z`)
+  return Math.round((endDate.getTime() - startDate.getTime()) / 86400000)
+}
+
 const schema = z.object({
-  name: z.string().min(2),
-  description: z.string().min(5),
-  discountPercent: z.coerce.number().min(1).max(100),
-  startDate: z.string().min(1, 'Requerido'),
-  endDate: z.string().min(1, 'Requerido'),
+  name: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(1, 'El nombre de la promoción es obligatorio.')),
+  description: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(1, 'La descripción es obligatoria.')),
+  discountPercent: z.coerce.number({ error: 'El descuento debe ser un número válido.' }).refine((v) => v > 0, { message: 'El descuento debe ser mayor que 0.' }).refine((v) => v <= 100, { message: 'El descuento no puede superar el 100%.' }),
+  startDate: z.string().min(1, 'La fecha de inicio es obligatoria.'),
+  endDate: z.string().min(1, 'La fecha de finalización es obligatoria.'),
+}).superRefine((data, ctx) => {
+  const today = getToday()
+  if (data.startDate && data.startDate < today) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startDate'], message: 'La fecha de inicio debe ser hoy o posterior.' })
+  }
+  if (data.startDate && data.endDate && data.endDate < data.startDate) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'La fecha fin debe ser igual o posterior al inicio.' })
+  }
+  if (data.startDate && data.endDate && dayDifference(data.startDate, data.endDate) > 6) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'La promoción no puede durar más de 7 días.' })
+  }
 })
 type FormData = z.infer<typeof schema>
 type PromotionFormData = FormData & { productIds: string[] }
@@ -35,14 +59,32 @@ export const PromotionsPage: FC = () => {
   const { data: promos = [], isLoading } = useQuery({ queryKey: ['promotions'], queryFn: promotionService.getAll })
   const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: productService.getAll })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(schema) as any })
+  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(schema) as any })
+  const formStartDate = watch('startDate')
 
   const createMut = useMutation({ mutationFn: (d: PromotionFormData) => promotionService.create(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['promotions'] }); toast.success('Promoción creada'); closeModal() }, onError: (e: Error) => toast.error(e.message) })
-  const updateMut = useMutation({ mutationFn: ({ id, data }: { id: string; data: PromotionFormData }) => promotionService.update(id, data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['promotions'] }); toast.success('Promoción actualizada'); closeModal() }, onError: (e: Error) => toast.error(e.message) })
+  const updateMut = useMutation({ mutationFn: ({ id, data }: { id: string; data: Partial<PromotionInput> }) => promotionService.update(id, data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['promotions'] }); toast.success('Promoción actualizada'); closeModal(); closeActivate(); }, onError: (e: Error) => toast.error(e.message) })
   const toggleMut = useMutation({ mutationFn: (id: string) => promotionService.toggleActive(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['promotions'] }) })
 
+  const [activating, setActivating] = useState<Promotion | null>(null)
+  const [activateStart, setActivateStart] = useState('')
+  const [activateEnd, setActivateEnd] = useState('')
+
+  const openActivate = (p: Promotion) => { setActivating(p); setActivateStart(toDateOnly(p.startDate)); setActivateEnd(toDateOnly(p.endDate)) }
+  const closeActivate = () => { setActivating(null); setActivateStart(''); setActivateEnd('') }
+  const activateConfirm = () => {
+    if (!activating) return
+    if (!activateStart || !activateEnd) { toast.error('Completa ambas fechas'); return }
+    const today = getToday()
+    if (activateStart < today) { toast.error('La fecha de inicio debe ser hoy o posterior'); return }
+    if (activateEnd < activateStart) { toast.error('La fecha fin debe ser igual o posterior a la fecha inicio'); return }
+    if (dayDifference(activateStart, activateEnd) > 6) { toast.error('La promoción no puede durar más de 7 días'); return }
+    const data: Partial<PromotionInput> = { startDate: activateStart, endDate: activateEnd, isActive: true }
+    updateMut.mutate({ id: activating.id, data })
+  }
+
   const openCreate = () => { reset(); setEditing(null); setSelectedProductIds([]); setIsOpen(true) }
-  const openEdit = (p: Promotion) => { reset({ name: p.name, description: p.description, discountPercent: p.discountPercent, startDate: p.startDate, endDate: p.endDate }); setEditing(p); setSelectedProductIds(p.productIds ?? []); setIsOpen(true) }
+  const openEdit = (p: Promotion) => { reset({ name: p.name, description: p.description, discountPercent: p.discountPercent, startDate: toDateOnly(p.startDate), endDate: toDateOnly(p.endDate) }); setEditing(p); setSelectedProductIds(p.productIds ?? []); setIsOpen(true) }
   const closeModal = () => { setIsOpen(false); setEditing(null); setSelectedProductIds([]); reset() }
   const onSubmit: SubmitHandler<FormData> = (data) => {
     const payload: PromotionFormData = { ...data, productIds: selectedProductIds }
@@ -92,7 +134,11 @@ export const PromotionsPage: FC = () => {
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" size="sm" onClick={() => openEdit(p)}><PencilSquareIcon className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => toggleMut.mutate(p.id)}>{p.isActive ? 'Desact.' : 'Activar'}</Button>
+                      {p.isActive ? (
+                        <Button variant="ghost" size="sm" onClick={() => toggleMut.mutate(p.id)}>Desact.</Button>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => openActivate(p)}>Activar</Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -108,8 +154,8 @@ export const PromotionsPage: FC = () => {
           <Input label="Descripción" {...register('description')} error={errors.description?.message} />
           <Input label="Descuento (%)" type="number" min="1" max="100" {...register('discountPercent')} error={errors.discountPercent?.message} />
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Fecha inicio" type="date" {...register('startDate')} error={errors.startDate?.message} />
-            <Input label="Fecha fin" type="date" {...register('endDate')} error={errors.endDate?.message} />
+            <Input label="Fecha inicio" type="date" min={getToday()} {...register('startDate')} error={errors.startDate?.message} />
+            <Input label="Fecha fin" type="date" min={formStartDate || getToday()} max={formStartDate ? addDays(formStartDate, 6) : addDays(getToday(), 6)} {...register('endDate')} error={errors.endDate?.message} />
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -134,6 +180,20 @@ export const PromotionsPage: FC = () => {
             <Button type="submit" isLoading={isSubmitting}>{editing ? 'Guardar' : 'Crear'}</Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Activate modal - only edit dates */}
+      <Modal isOpen={!!activating} onClose={closeActivate} title={`Activar promoción${activating ? `: ${activating.name}` : ''}`} size="sm">
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Fecha inicio" type="date" min={getToday()} value={activateStart} onChange={(e) => setActivateStart(e.target.value)} />
+            <Input label="Fecha fin" type="date" min={activateStart || getToday()} max={activateStart ? addDays(activateStart, 6) : addDays(getToday(), 6)} value={activateEnd} onChange={(e) => setActivateEnd(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={closeActivate}>Cancelar</Button>
+            <Button onClick={() => activateConfirm()}>{activating?.isActive ? 'Actualizar' : 'Activar'}</Button>
+          </div>
+        </div>
       </Modal>
     </div>
   )

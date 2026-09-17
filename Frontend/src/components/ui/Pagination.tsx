@@ -7,9 +7,10 @@ interface PaginationProps {
   pageSize: number
   total: number
   onPageChange: (page: number) => void
+  label?: string
 }
 
-export const Pagination: FC<PaginationProps> = ({ page, pageSize, total, onPageChange }) => {
+export const Pagination: FC<PaginationProps> = ({ page, pageSize, total, onPageChange, label = 'resultados' }) => {
   const totalPages = Math.ceil(total / pageSize)
   const from = (page - 1) * pageSize + 1
   const to = Math.min(page * pageSize, total)
@@ -19,7 +20,7 @@ export const Pagination: FC<PaginationProps> = ({ page, pageSize, total, onPageC
   return (
     <div className="flex items-center justify-between px-1 py-3">
       <p className="text-sm text-gray-500">
-        Mostrando <span className="font-medium">{from}–{to}</span> de <span className="font-medium">{total}</span> resultados
+        Mostrando <span className="font-medium">{from}–{to}</span> de <span className="font-medium">{total}</span> {label}
       </p>
       <div className="flex items-center gap-1">
         <Button

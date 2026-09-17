@@ -14,7 +14,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import toast from 'react-hot-toast'
 
-const schema = z.object({ name: z.string().min(2, 'Mínimo 2 caracteres') })
+const schema = z.object({ name: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(1, 'El nombre de la categoría es obligatorio.')) })
 type FormData = z.infer<typeof schema>
 
 export const CategoriesPage: FC = () => {

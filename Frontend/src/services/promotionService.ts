@@ -46,6 +46,7 @@ export const promotionService = {
         description: input.description,
         type: 'discount',
         value: input.discountPercent,
+        start_date: input.startDate,
         end_date: input.endDate,
         isActive: true,
         productIds: selectedProductIds,
@@ -62,7 +63,9 @@ export const promotionService = {
       if (input.name !== undefined) payload.name = input.name
       if (input.description !== undefined) payload.description = input.description
       if (input.discountPercent !== undefined) payload.value = input.discountPercent
+      if (input.startDate !== undefined) payload.start_date = input.startDate
       if (input.endDate !== undefined) payload.end_date = input.endDate
+      if (input.isActive !== undefined) payload.isActive = input.isActive
       if (input.productIds !== undefined) payload.productIds = input.productIds
       const { data } = await apiClient.patch(`/promotions/${id}`, payload)
       return normalizePromotion(data)

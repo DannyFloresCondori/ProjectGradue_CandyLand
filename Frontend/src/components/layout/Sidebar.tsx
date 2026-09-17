@@ -39,11 +39,16 @@ function isAdminRole(role?: string): boolean {
   return normalized === 'admin' || normalized.includes('administrador')
 }
 
+function isKitchenRole(role?: string): boolean {
+  return role?.toLowerCase() === 'cocina' || role?.toLowerCase().includes('cocina') === true
+}
+
 export const Sidebar: FC = () => {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
   const { user } = useAuthStore()
 
   const visible = nav.filter(item => {
+    if (isKitchenRole(user?.role)) return item.to === '/dashboard' || item.to === '/cocina'
     if (!item.roles) return true
     if (isAdminRole(user?.role)) return true
     return item.roles.includes(user?.role ?? '')

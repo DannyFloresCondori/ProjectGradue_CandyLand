@@ -33,6 +33,10 @@ export class CreatePromotionDto {
   @IsOptional()
   value?: number;
 
+  @IsOptional()
+  @IsDateString()
+  start_date?: Date;
+
   @IsDateString()
   end_date!: Date;
 

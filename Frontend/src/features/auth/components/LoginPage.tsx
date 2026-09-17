@@ -7,7 +7,6 @@ import { useAuthStore } from '@/stores/authStore'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import LogoImg from '@/assets/Logo.jpeg'
-import AmbienteImg from '@/assets/Ambiente.jpeg'
 import toast from 'react-hot-toast'
 
 const schema = z.object({
@@ -83,12 +82,8 @@ export const LoginPage: FC = () => {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      <div
-        className="absolute inset-0 bg-cover bg-center scale-105"
-        style={{ backgroundImage: `url(${AmbienteImg})` }}
-      />
-      <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-black/60" />
+    <div className="relative min-h-screen overflow-hidden bg-white">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(250,218,229,0.75),_transparent_42%),radial-gradient(circle_at_bottom_right,_rgba(255,236,190,0.7),_transparent_38%)]" />
       <div className="relative flex min-h-screen items-center justify-center p-4">
         <div className="w-full max-w-sm">
           {/* Brand */}
@@ -99,13 +94,13 @@ export const LoginPage: FC = () => {
             <h1 className="bg-gradient-to-r from-pink-500 via-rose-400 to-amber-300 bg-clip-text text-3xl font-black tracking-wide text-transparent drop-shadow-[0_2px_8px_rgba(255,255,255,0.45)]">
               CandyLand
             </h1>
-            <p className="mt-2 text-sm font-medium text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)]">
+            <p className="mt-2 text-sm font-medium text-gray-600">
               Sistema de Gestión de Ventas
             </p>
           </div>
 
           {/* Form card */}
-          <div className="rounded-2xl border border-pink-200/80 bg-white/85 p-6 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+          <div className="rounded-2xl border border-pink-100 bg-white/95 p-6 shadow-[0_20px_60px_-20px_rgba(190,70,120,0.22)] backdrop-blur-xl">
             <div className="mb-5 text-center">
               <h2 className="text-lg font-semibold text-gray-900">Iniciar sesión</h2>
               <p className="mt-1 text-sm text-gray-600">Bienvenido de nuevo</p>
@@ -145,7 +140,7 @@ export const LoginPage: FC = () => {
             </form>
           </div>
 
-          <p className="mt-6 text-center text-xs font-medium text-white/80 drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)]">
+          <p className="mt-6 text-center text-xs font-medium text-gray-500">
             Heladería Candyland · Cochabamba, Bolivia
           </p>
         </div>

@@ -36,6 +36,9 @@ export class Promotion {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, default: 0 })
   value?: number;
 
+  @Column({ type: 'timestamp', nullable: true })
+  start_date?: Date;
+
   @Column({ type: 'timestamp', nullable: false })
   end_date!: Date;
 

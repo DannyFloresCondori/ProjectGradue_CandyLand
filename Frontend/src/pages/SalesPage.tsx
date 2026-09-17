@@ -14,11 +14,12 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { CustomerSearch } from '@/components/shared/CustomerSearch'
 import { QuickCustomerModal } from '@/components/shared/QuickCustomerModal'
 import { ProductCatalog } from '@/components/shared/ProductCatalog'
+import { PromotionBadge } from '@/components/shared/PromotionBadge'
 import { QuantityControl } from '@/components/shared/QuantityControl'
 import { ToppingSelector } from '@/components/shared/ToppingSelector'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
-import { PlusIcon, PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import type { Sale, SaleDetailInput, PaymentType, Customer, Promotion, Product, Category } from '@/types'
 import { cn } from '@/lib/utils'
@@ -126,6 +127,8 @@ export const SalesPage: FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [isGeneralClient, setIsGeneralClient] = useState(false)
   const [stockMap, setStockMap] = useState<Record<string, number>>({})
+  const [salesPage, setSalesPage] = useState(1)
+  const salesPageSize = 1
 
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
   const [quickPrefill, setQuickPrefill] = useState('')
@@ -181,7 +184,8 @@ export const SalesPage: FC = () => {
       const existing = groups.get(dayKey)
 
       if (existing) {
-        existing.total += sale.total
+        // only include non-cancelled sales in the day total
+        if (sale.status !== 'canceled') existing.total += sale.total
         existing.sales.push(sale)
         return
       }
@@ -194,13 +198,17 @@ export const SalesPage: FC = () => {
           month: 'long',
           year: 'numeric',
         }),
-        total: sale.total,
+        // initialize total only with non-cancelled sale amount
+        total: sale.status !== 'canceled' ? sale.total : 0,
         sales: [sale],
       })
     })
 
     return Array.from(groups.values())
   }, [sales])
+  const paginatedSales = groupedSales.slice((salesPage - 1) * salesPageSize, salesPage * salesPageSize)
+  const todayKey = new Date().toISOString().split('T')[0]
+  const todayPage = groupedSales.findIndex((group) => group.key === todayKey) + 1
 
   const addToCart = (productId: string) => {
     const prod = products.find((p: Product) => p.id === productId)
@@ -319,6 +327,13 @@ export const SalesPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['dashboard-metrics'] })
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: ['active-alerts'] })
+      qc.invalidateQueries({ queryKey: ['report'] })
+      // also invalidate any report queries that include params (from/to)
+      try {
+        qc.invalidateQueries({ predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'report' })
+      } catch (e) {
+        // fallback: already invalidated by key above
+      }
       toast.success('Venta anulada'); setCancelModal(null)
     },
     onError: (e: Error) => toast.error(e.message),
@@ -338,12 +353,45 @@ export const SalesPage: FC = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Ventas</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold">Ventas</h1>
+          <div className="ml-2 flex items-center gap-1">
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => setSalesPage((page) => Math.max(1, page - 1))}
+              disabled={salesPage <= 1}
+              aria-label="Ver día anterior con ventas"
+              title="Día anterior con ventas"
+            >
+              <ChevronLeftIcon className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => setSalesPage((page) => Math.min(groupedSales.length, page + 1))}
+              disabled={salesPage >= groupedSales.length || groupedSales.length === 0}
+              aria-label="Ver día siguiente con ventas"
+              title="Día siguiente con ventas"
+            >
+              <ChevronRightIcon className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSalesPage(todayPage)}
+              disabled={todayPage === 0 || salesPage === todayPage}
+              title="Ir a las ventas de hoy"
+            >
+              Hoy
+            </Button>
+          </div>
+        </div>
         <Button onClick={() => { resetStockMap(); setIsNewOpen(true) }} size="sm"><PlusIcon className="h-4 w-4" />Nueva venta</Button>
       </div>
 
       <div className="space-y-4">
-        {groupedSales.map((group) => (
+        {paginatedSales.map((group) => (
           <Card key={group.key}>
             <CardBody className="p-0">
               <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3">
@@ -374,10 +422,14 @@ export const SalesPage: FC = () => {
                       <p className="text-xs text-gray-500">
                         <span className="font-medium text-gray-600">Fecha de venta:</span> {formatDateTime(sale.createdAt)}
                       </p>
+                      {sale.status === 'canceled' && sale.cancellationReason && (
+                        <p className="text-xs mt-1 text-red-600">Motivo: {sale.cancellationReason}</p>
+                      )}
                       <div className="mt-2 space-y-1">
                         {sale.details.map((detail) => (
                           <div key={detail.id} className="text-xs text-gray-600">
                             <span className="font-medium">{detail.productName}</span> x{detail.quantity}
+                            <PromotionBadge promotion={products.find((product) => product.id === detail.productId)?.promotion} compact />
                             {detail.toppings.length > 0 && (
                               <span className="text-gray-500"> · {detail.toppings.map((topping) => topping.toppingName).join(', ')}</span>
                             )}
@@ -487,6 +539,7 @@ export const SalesPage: FC = () => {
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-medium text-gray-800 truncate">{item.productName}</p>
                           <p className="text-[10px] text-gray-400">{formatCurrency(item.unitPrice)} c/u</p>
+                          <PromotionBadge promotion={product?.promotion} compact />
                           {selectedToppingNames.length > 0 && (
                             <p className="text-[10px] text-primary-600">+ {selectedToppingNames.join(', ')}</p>
                           )}

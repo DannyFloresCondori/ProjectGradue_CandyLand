@@ -141,10 +141,10 @@ export const orderService = {
     }
   },
 
-  async cancel(id: string, reason: string): Promise<Order> {
+  async cancel(id: string): Promise<any> {
     try {
-      const { data } = await apiClient.patch(`/orders/${id}`, { status: 'cancelled', cancellation_reason: reason })
-      return normalizeOrder(data)
+      const { data } = await apiClient.delete(`/orders/${id}`)
+      return data
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }

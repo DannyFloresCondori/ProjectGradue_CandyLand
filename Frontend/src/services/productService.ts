@@ -10,6 +10,7 @@ function resolveImageUrl(imagePath?: string): string {
 
 function normalizeProduct(item: any): Product {
   const category = item.category ?? item.categoryEntity ?? null
+  const promotion = item.promotion
   const toppings = (item.productToppings ?? item.toppings ?? []).map((t: any) => ({
     id: t.topping?.id ?? t.toppingId ?? t.id ?? '',
     name: t.topping?.name ?? t.name ?? '',
@@ -27,6 +28,13 @@ function normalizeProduct(item: any): Product {
     minStock: Number(item.minimum_stock ?? item.minStock ?? 0),
     isActive: item.isActive ?? true,
     toppings,
+    promotion: promotion ? {
+      id: promotion.id,
+      name: promotion.name ?? 'Promoción',
+      type: promotion.type,
+      discountPercent: Number(promotion.discount_percent ?? promotion.value ?? promotion.discountPercent ?? 0),
+      isActive: promotion.is_active ?? promotion.isActive ?? true,
+    } : null,
     createdAt: item.createdAt ?? new Date().toISOString(),
   }
 }
@@ -76,7 +84,7 @@ export const productService = {
         }
       })()
 
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3002/api/v1'
+      const baseUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:3002/api/v1`
       const response = await fetch(`${baseUrl}/products/${id}/image`, {
         method: 'POST',
         body: formData,

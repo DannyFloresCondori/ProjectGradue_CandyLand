@@ -24,14 +24,14 @@ async function bootstrap() {
   app.use(helmet());
 
   const allowedOrigins = configService
-    .get<string>('CORS_ORIGINS', 'http://localhost:5173,http://localhost:3000')
+    .get<string>('CORS_ORIGINS', '*')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
         callback(null, true);
         return;
       }
@@ -58,7 +58,7 @@ async function bootstrap() {
 
   //Iniciar el servidor y muestrar el puerto en el que se esta ejecutando
   const port = configService.get<string>('PORT', '3002');
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   logger.log(`Application is running on: http://localhost:${port}`);
   logger.log(`API Base URL: http://localhost:${port}/${apiPrefix}`);

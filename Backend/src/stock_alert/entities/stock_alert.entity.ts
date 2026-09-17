@@ -18,6 +18,9 @@ export class StockAlert {
   @Column({ type: 'int', default: 0 })
   minimum_stock!: number;
 
+  @Column({ type: 'int', default: 0 })
+  stock_quantity!: number;
+
   @Column({ type: 'boolean', default: false })
   is_resolved!: boolean;
 

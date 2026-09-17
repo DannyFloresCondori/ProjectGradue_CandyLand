@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { MagnifyingGlassIcon, TagIcon } from '@heroicons/react/24/outline'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { Product, Category } from '@/types'
+import { PromotionBadge } from './PromotionBadge'
 
 interface ProductCatalogProps {
   products: Product[]
@@ -24,7 +25,7 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
   return (
     <div className="flex w-[58%] flex-col border-r border-gray-100 min-h-0">
       {/* Search + Category filters */}
-      <div className="border-b border-gray-100 px-4 pt-3 pb-2 space-y-2 flex-shrink-0">
+      <div className="border-b border-gray-100 px-4 pt-3 pb-2 space-y-2 shrink-0">
         <div className="relative">
           <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
@@ -40,7 +41,7 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
             type="button"
             onClick={() => setCategoryFilter('all')}
             className={cn(
-              'cursor-pointer flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+              'cursor-pointer shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
               categoryFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             )}
           >
@@ -52,7 +53,7 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
               type="button"
               onClick={() => setCategoryFilter(cat.id)}
               className={cn(
-                'cursor-pointer flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                'cursor-pointer shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
                 categoryFilter === cat.id
                   ? 'bg-primary-500 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -83,7 +84,7 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
                   disabled={outOfStock}
                   onClick={() => onAddProduct(p.id)}
                   className={cn(
-                    'group relative cursor-pointer rounded-lg border p-3 text-left transition-all min-h-[94px]',
+                    'group relative min-h-23.5 cursor-pointer rounded-lg border p-3 text-left transition-all',
                     outOfStock
                       ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-50'
                       : 'border-gray-200 hover:border-primary-400 hover:bg-primary-50 hover:shadow-sm active:scale-[0.98]'
@@ -100,7 +101,21 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
                     </span>
                   )}
                   <p className="font-medium text-sm text-gray-900 leading-tight truncate pr-10">{p.name}</p>
-                  <p className="mt-1 text-xs font-bold text-primary-600">{formatCurrency(p.price)}</p>
+                  {p.promotion?.isActive && p.promotion.type === 'discount' && Number(p.promotion.discountPercent) > 0 ? (
+                    <div className="mt-1 flex items-baseline gap-1.5">
+                      <span className="text-[10px] text-gray-400 line-through">{formatCurrency(p.price)}</span>
+                      <span className="text-xs font-bold text-emerald-600">
+                        {formatCurrency(p.price * (1 - Number(p.promotion.discountPercent) / 100))}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-xs font-bold text-primary-600">{formatCurrency(p.price)}</p>
+                  )}
+                  {p.promotion?.isActive && (
+                    <div className="mt-1 max-w-full">
+                      <PromotionBadge promotion={p.promotion} compact />
+                    </div>
+                  )}
                   <p className="mt-0.5 text-[10px] text-gray-400">Stock: {p.stock}</p>
                 </button>
               )

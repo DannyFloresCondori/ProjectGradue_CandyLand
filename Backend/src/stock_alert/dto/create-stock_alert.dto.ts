@@ -24,6 +24,11 @@ export class CreateStockAlertDto {
   minimum_stock!: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  stock_quantity?: number;
+
+  @IsOptional()
   @IsBoolean()
   is_resolved?: boolean;
 

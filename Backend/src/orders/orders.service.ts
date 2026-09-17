@@ -26,6 +26,7 @@ import {
 } from 'src/promotions/entities/promotion.entity';
 import { generateTicketPdf } from 'src/pdf/ticket.pdf';
 import { StockAlert } from 'src/stock_alert/entities/stock_alert.entity';
+import { OrdersGateway } from './orders.gateway';
 
 @Injectable()
 export class OrdersService {
@@ -44,6 +45,7 @@ export class OrdersService {
     private readonly ordersDetailRepository: Repository<OrdersDetail>,
     @InjectRepository(Topping)
     private readonly toppingRepository: Repository<Topping>,
+    private readonly ordersGateway: OrdersGateway,
     @InjectRepository(Sale)
     private readonly saleRepository: Repository<Sale>,
     @InjectRepository(SaleDetail)
@@ -384,6 +386,7 @@ export class OrdersService {
 
       const savedOrder = await queryRunner.manager.save(Order, order);
       await queryRunner.commitTransaction();
+      this.ordersGateway.notifyOrderCreated(savedOrder);
       return savedOrder;
     } catch (error) {
       await queryRunner.rollbackTransaction();

@@ -18,10 +18,10 @@ import type { Customer } from '@/types'
 import { EmptyState } from '@/components/ui/EmptyState'
 
 const schema = z.object({
-  ci: z.string().min(5, 'Mínimo 5 dígitos').max(10, 'Máximo 10 dígitos').regex(/^\d+$/, 'Solo números'),
-  fullName: z.string().min(2, 'Mínimo 2 caracteres'),
-  phone: z.string().min(7, 'Teléfono inválido').max(10, 'Teléfono inválido'),
-  address: z.string().min(5, 'Mínimo 5 caracteres'),
+  ci: z.string().trim().min(5, 'Mínimo 5 dígitos').max(10, 'Máximo 10 dígitos').regex(/^\d+$/, 'Solo números'),
+  fullName: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(2, 'El nombre es obligatorio.')),
+  phone: z.string().regex(/^[67]\d{7}$/, 'Ingrese un número de teléfono boliviano válido de 8 dígitos.'),
+  address: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(5, 'La dirección es obligatoria.')),
 })
 type FormData = z.infer<typeof schema>
 

@@ -6,12 +6,15 @@ function normalizeUser(item: any): User {
     id: item.id,
     roleId: item.role?.id ?? item.roleId ?? '',
     role: item.role ? { id: item.role.id, name: item.role.name, description: item.role.description ?? '', createdAt: item.role.createdAt ?? new Date().toISOString() } : { id: '', name: 'cajero', description: '', createdAt: new Date().toISOString() },
-    fullName: item.full_name ?? item.fullName ?? '',
+    fullName: item.name ?? item.full_name ?? item.fullName ?? '',
     username: item.username ?? '',
     email: item.email ?? '',
+    phone: item.phone ?? '',
     password: '••••••••',
     isActive: item.isActive ?? true,
     createdAt: item.createdAt ?? new Date().toISOString(),
+    updatedAt: item.updatedAt ?? item.updated_at ?? undefined,
+    salesCount: Number(item.salesCount ?? item.sales_count ?? 0),
   }
 }
 

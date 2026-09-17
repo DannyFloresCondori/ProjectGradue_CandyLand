@@ -37,6 +37,7 @@ export class StockAlertService {
     if (existingAlert) {
       existingAlert.current_stock = product.current_stock;
       existingAlert.minimum_stock = product.minimum_stock;
+      existingAlert.stock_quantity = createStockAlertDto.stock_quantity ?? existingAlert.stock_quantity;
       existingAlert.alert_message =
         createStockAlertDto.alert_message ?? 'llegaste al minimo de stock';
       return this.stockAlertRepository.save(existingAlert);
@@ -46,6 +47,7 @@ export class StockAlertService {
       product,
       current_stock: product.current_stock,
       minimum_stock: product.minimum_stock,
+      stock_quantity: createStockAlertDto.stock_quantity ?? 0,
       is_resolved: false,
       alert_message: createStockAlertDto.alert_message ?? 'llegaste al minimo de stock',
     });
@@ -109,6 +111,10 @@ export class StockAlertService {
 
     if (updateStockAlertDto.minimum_stock !== undefined) {
       alert.minimum_stock = updateStockAlertDto.minimum_stock;
+    }
+
+    if (updateStockAlertDto.stock_quantity !== undefined) {
+      alert.stock_quantity = updateStockAlertDto.stock_quantity;
     }
 
     if (updateStockAlertDto.is_resolved !== undefined) {

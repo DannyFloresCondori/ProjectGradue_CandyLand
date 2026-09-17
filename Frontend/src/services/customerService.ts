@@ -27,7 +27,8 @@ export const customerService = {
     try {
       const { data } = await apiClient.get('/client', { params: { ci } })
       const customers = (Array.isArray(data) ? data : []).map(normalizeCustomer)
-      return customers.length > 0 ? customers[0] : null
+      const activeCustomer = customers.find((customer) => customer.isActive)
+      return activeCustomer ?? null
     } catch (error) {
       // Return null instead of throwing when CI not found
       return null
@@ -35,7 +36,8 @@ export const customerService = {
   },
 
   async getActive(): Promise<Customer[]> {
-    return this.getAll()
+    const customers = await this.getAll()
+    return customers.filter((customer) => customer.isActive)
   },
 
   async getById(id: string): Promise<Customer> {

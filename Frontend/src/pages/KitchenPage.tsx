@@ -1,4 +1,4 @@
-import { useState, type FC } from 'react'
+import { useEffect, useState, type FC } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { orderService } from '@/services/orderService'
 import { saleService } from '@/services/saleService'
@@ -16,6 +16,7 @@ import {
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
+import { ordersSocket } from '@/lib/ordersSocket'
 import type { Order, OrderStatus, PaymentType } from '@/types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -226,9 +227,24 @@ export const KitchenPage: FC = () => {
       const result = await orderService.getPending()
       return Array.isArray(result) ? result : []
     },
-    refetchInterval: 20_000,
+    refetchInterval: 60_000,
     retry: 1,
   })
+
+  useEffect(() => {
+    const refreshOrders = () => {
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
+    }
+
+    ordersSocket.on('order.created', refreshOrders)
+    ordersSocket.connect()
+    ordersSocket.emit('orders.subscribe')
+
+    return () => {
+      ordersSocket.off('order.created', refreshOrders)
+      ordersSocket.disconnect()
+    }
+  }, [qc])
 
   const updateMut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: OrderStatus }) => orderService.updateStatus(id, status),

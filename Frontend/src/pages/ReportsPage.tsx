@@ -2,11 +2,13 @@ import type { FC } from 'react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { reportService } from '@/services/reportService'
+import { saleService } from '@/services/saleService'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { StatCard } from '@/components/ui/StatCard'
 import { PageSpinner } from '@/components/ui/Spinner'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { Modal } from '@/components/ui/Modal'
+import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
@@ -98,6 +100,29 @@ export const ReportsPage: FC = () => {
 
   const todayStr = formatDateInput(new Date())
   const forwardDisabled = parseLocalDate(toDate) >= parseLocalDate(todayStr)
+  const [showCancelled, setShowCancelled] = useState(false)
+  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null)
+
+  const { data: cancelledList, isLoading: loadingCancelled } = useQuery({
+    queryKey: ['cancelled-sales', fromDate, toDate],
+    queryFn: async () => {
+      const from = parseLocalDate(fromDate)
+      const to = new Date(parseLocalDate(toDate))
+      to.setHours(23, 59, 59, 999)
+      const all = await saleService.getAll()
+      return all.filter((s) => {
+        const d = new Date(s.createdAt)
+        return d >= from && d <= to && s.status === 'canceled'
+      })
+    },
+    enabled: showCancelled,
+  })
+
+  const { data: selectedSale, isLoading: loadingSelectedSale } = useQuery({
+    queryKey: ['sale', selectedSaleId],
+    queryFn: () => (selectedSaleId ? saleService.getById(selectedSaleId) : Promise.resolve(null)),
+    enabled: !!selectedSaleId,
+  })
 
   return (
     <div className="space-y-6">
@@ -172,7 +197,9 @@ export const ReportsPage: FC = () => {
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
             <StatCard title="Ventas completadas" value={data.totalSales} icon={<ShoppingCartIcon className="h-5 w-5" />} />
             <StatCard title="Ingresos totales" value={formatCurrency(data.totalRevenue)} icon={<CurrencyDollarIcon className="h-5 w-5" />} iconBg="bg-emerald-50" />
-            <StatCard title="Ventas anuladas" value={data.cancelledSales} icon={<XCircleIcon className="h-5 w-5" />} iconBg="bg-red-50" />
+            <div role="button" tabIndex={0} onClick={() => setShowCancelled(true)} onKeyDown={(e) => { if (e.key === 'Enter') setShowCancelled(true) }} className="cursor-pointer hover:shadow-md transition-shadow">
+              <StatCard title="Ventas anuladas" value={data.cancelledSales} icon={<XCircleIcon className="h-5 w-5" />} iconBg="bg-red-50" />
+            </div>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
@@ -220,6 +247,100 @@ export const ReportsPage: FC = () => {
               </CardBody>
             </Card>
           </div>
+
+          {/* Cancelled sales modal */}
+          <Modal isOpen={showCancelled} onClose={() => { setShowCancelled(false); setSelectedSaleId(null) }} title={`Ventas anuladas (${data.cancelledSales})`} size="xl">
+            {loadingCancelled ? (
+              <PageSpinner />
+            ) : (
+              <div>
+                <table className="w-full text-sm">
+                  <thead className="border-b border-gray-100 bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium text-gray-600">Venta</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-600">Fecha</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-600">Cliente</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-600">Total</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-600">Razón</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {(cancelledList ?? []).map((s) => (
+                      <tr key={s.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-mono text-xs">#{s.id.slice(-6).toUpperCase()}</td>
+                        <td className="px-4 py-3 text-xs text-gray-600">{formatDate(new Date(s.createdAt))}</td>
+                        <td className="px-4 py-3 text-gray-600">{s.customerName ?? 'General'}</td>
+                        <td className="px-4 py-3 font-semibold text-primary-600">{formatCurrency(s.total)}</td>
+                        <td className="px-4 py-3 text-sm text-red-600">{s.cancellationReason ?? '—'}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedSaleId(s.id)}>Ver detalles</Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {(cancelledList ?? []).length === 0 && (
+                      <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-400">No hay ventas anuladas en el período seleccionado</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Modal>
+
+          {/* Selected sale detail modal */}
+          <Modal isOpen={!!selectedSaleId} onClose={() => setSelectedSaleId(null)} title={`Venta #${selectedSaleId ? selectedSaleId.slice(-6).toUpperCase() : ''}`} size="md">
+            {loadingSelectedSale || !selectedSale ? (
+              <PageSpinner />
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-4 text-sm">
+                  <div>
+                    <p className="text-xs text-gray-500">Estado</p>
+                    <p className="font-medium text-red-700">Anulada</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Fecha</p>
+                    <p className="font-medium">{formatDateTime(selectedSale.createdAt)}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-500">Cliente</p>
+                    <p className="font-medium">{selectedSale.customerName ?? 'General'}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-500">Razón de anulación</p>
+                    <p className="font-medium text-red-700">{selectedSale.cancellationReason ?? '—'}</p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Productos</p>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-500">
+                        <th className="text-left pb-1">Producto</th>
+                        <th className="text-center pb-1">Cant.</th>
+                        <th className="text-right pb-1">P.U.</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {selectedSale.details.map(d => (
+                        <tr key={d.id}>
+                          <td className="py-1">{d.productName}</td>
+                          <td className="py-1 text-center">{d.quantity}</td>
+                          <td className="py-1 text-right">{formatCurrency(d.unitPrice)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex justify-between border-t border-gray-200 pt-2 mt-2 font-bold">
+                  <span>Total</span>
+                  <span className="text-primary-600">{formatCurrency(selectedSale.total)}</span>
+                </div>
+              </div>
+            )}
+          </Modal>
 
           {/* Top products */}
           <Card>

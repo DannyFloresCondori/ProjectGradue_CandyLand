@@ -1,6 +1,6 @@
 // ─── Domain Types ────────────────────────────────────────────────────────────
 
-export type RoleName = 'admin' | 'cajero' | 'inventario'
+export type RoleName = 'admin' | 'cajero' | 'inventario' | 'cocina'
 
 export interface Role {
   id: string
@@ -16,9 +16,12 @@ export interface User {
   fullName: string
   username: string
   email: string
+  phone?: string
   password: string
   isActive: boolean
   createdAt: string
+  updatedAt?: string
+  salesCount?: number
 }
 
 export interface AuthUser {
@@ -163,6 +166,7 @@ export interface StockAlert {
   productName: string
   currentStock: number
   minStock: number
+  stockQuantity?: number
   isResolved: boolean
   alertedAt: string
   resolvedAt: string | null
@@ -277,6 +281,7 @@ export interface PromotionInput {
   discountPercent: number
   startDate: string
   endDate: string
+  isActive?: boolean
   productIds?: string[]
 }
 

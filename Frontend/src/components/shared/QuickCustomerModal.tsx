@@ -12,10 +12,10 @@ import { customerService } from '@/services/customerService'
 import type { Customer } from '@/types'
 
 const quickSchema = z.object({
-  ci:       z.string().min(5, 'Mínimo 5 dígitos').regex(/^\d+$/, 'Solo números'),
-  fullName: z.string().min(2, 'Mínimo 2 caracteres'),
-  phone:    z.string().min(7, 'Teléfono inválido'),
-  address:  z.string().min(5, 'Mínimo 5 caracteres'),
+  ci:       z.string().trim().min(5, 'Mínimo 5 dígitos').regex(/^\d+$/, 'Solo números'),
+  fullName: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(2, 'El nombre es obligatorio.')),
+  phone:    z.string().regex(/^[67]\d{7}$/, 'Ingrese un número de teléfono boliviano válido de 8 dígitos.'),
+  address:  z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(5, 'La dirección es obligatoria.')),
 })
 type QuickFormData = z.infer<typeof quickSchema>
 
@@ -30,7 +30,8 @@ interface QuickCustomerModalProps {
 export const QuickCustomerModal: FC<QuickCustomerModalProps> = ({ isOpen, prefill, onClose, onCreated }) => {
   const qc = useQueryClient()
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<QuickFormData>({
-    resolver: zodResolver(quickSchema),
+    // z.preprocess can produce types that TS infers less narrowly; cast resolver to avoid mismatch
+    resolver: zodResolver(quickSchema) as any,
   })
 
   useEffect(() => {

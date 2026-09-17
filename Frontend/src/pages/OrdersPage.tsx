@@ -23,6 +23,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { CustomerSearch } from "@/components/shared/CustomerSearch";
 import { QuickCustomerModal } from "@/components/shared/QuickCustomerModal";
 import { ProductCatalog } from "@/components/shared/ProductCatalog";
+import { PromotionBadge } from "@/components/shared/PromotionBadge";
 import { QuantityControl } from "@/components/shared/QuantityControl";
 import { ToppingSelector } from "@/components/shared/ToppingSelector";
 import {
@@ -90,7 +91,7 @@ interface CartItem {
 
 // ─── OrderDetailView ──────────────────────────────────────────────────────────
 
-const OrderDetailView: FC<{ order: Order }> = ({ order }) => (
+const OrderDetailView: FC<{ order: Order; products: Product[] }> = ({ order, products }) => (
   <div className="space-y-4">
     <div className="grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-4 text-sm">
       <div>
@@ -170,6 +171,7 @@ const OrderDetailView: FC<{ order: Order }> = ({ order }) => (
                 {d.quantity}×
               </span>
               <span className="font-medium">{d.productName}</span>
+              <PromotionBadge promotion={products.find((product) => product.id === d.productId)?.promotion} compact />
               {d.toppings.length > 0 && (
                 <span className="text-xs text-gray-500 ml-1">
                   + {d.toppings.map((t) => t.toppingName).join(", ")}
@@ -230,10 +232,7 @@ export const OrdersPage: FC = () => {
     null,
   );
   const [editNotes, setEditNotes] = useState("");
-  const [cancelModal, setCancelModal] = useState<{
-    order: Order;
-    reason: string;
-  } | null>(null);
+  const [preCancel, setPreCancel] = useState<Order | null>(null);
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["orders"],
@@ -377,8 +376,7 @@ export const OrdersPage: FC = () => {
   });
 
   const cancelMut = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      orderService.cancel(id, reason),
+    mutationFn: ({ id }: { id: string }) => orderService.cancel(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["kitchen-orders"] });
@@ -387,7 +385,7 @@ export const OrdersPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['dashboard-metrics'] });
       qc.invalidateQueries({ queryKey: ['alerts'] });
       toast.success("Pedido cancelado. Stock restituido.");
-      setCancelModal(null);
+      setPreCancel(null);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -888,9 +886,7 @@ export const OrdersPage: FC = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() =>
-                                setCancelModal({ order: o, reason: "" })
-                              }
+                              onClick={() => setPreCancel(o)}
                               title="Cancelar pedido"
                             >
                               <XMarkIcon className="h-4 w-4 text-red-400" />
@@ -1106,6 +1102,7 @@ export const OrdersPage: FC = () => {
                           <p className="text-[10px] text-gray-400">
                             {formatCurrency(item.unitPrice)} c/u
                           </p>
+                          <PromotionBadge promotion={product?.promotion} compact />
                           {selectedToppingNames.length > 0 && (
                             <p className="text-[10px] text-primary-600">
                               + {selectedToppingNames.join(", ")}
@@ -1374,6 +1371,7 @@ export const OrdersPage: FC = () => {
                             <p className="text-[10px] text-gray-400">
                               {formatCurrency(item.unitPrice)} c/u
                             </p>
+                            <PromotionBadge promotion={product?.promotion} compact />
                             {selectedToppingNames.length > 0 && (
                               <p className="text-[10px] text-primary-600">
                                 + {selectedToppingNames.join(", ")}
@@ -1461,67 +1459,38 @@ export const OrdersPage: FC = () => {
         title={`Pedido #${viewOrder?.id.slice(-6).toUpperCase()}`}
         size="md"
       >
-        {viewOrder && <OrderDetailView order={viewOrder} />}
+        {viewOrder && <OrderDetailView order={viewOrder} products={products} />}
       </Modal>
 
       {/* ─── Cancel Modal ─────────────────────────────────────────────────── */}
+      {/* ─── Pre-confirm Cancel Modal (¿Está segur@...?) ─────────────────────── */}
       <Modal
-        isOpen={!!cancelModal}
-        onClose={() => setCancelModal(null)}
-        title="Cancelar pedido"
+        isOpen={!!preCancel}
+        onClose={() => setPreCancel(null)}
+        title=""
         size="sm"
       >
-        {cancelModal && (
+        {preCancel && (
           <div className="space-y-4">
-            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-              <p className="font-medium">
-                Esta acción cancelará el pedido{" "}
-                <span className="font-mono">
-                  #{cancelModal.order.id.slice(-6).toUpperCase()}
-                </span>
-                .
-              </p>
-              <p className="text-xs mt-1 text-red-600">
-                El stock de los productos será restituido automáticamente.
-              </p>
+            <div className="px-4 py-3 text-sm">
+              <p className="font-medium text-gray-900">¿Está segur@ que quiere cancelar el pedido?</p>
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">
-                Motivo de cancelación
-              </label>
-              <textarea
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-                rows={3}
-                value={cancelModal.reason}
-                onChange={(e) =>
-                  setCancelModal((m) =>
-                    m ? { ...m, reason: e.target.value } : null,
-                  )
-                }
-                placeholder="Ej: Cliente no contestó, pedido duplicado..."
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setCancelModal(null)}>
-                Volver
-              </Button>
+            <div className="flex justify-end gap-2 px-4">
+              <Button variant="secondary" onClick={() => setPreCancel(null)}>Negar</Button>
               <Button
-                variant="danger"
-                isLoading={cancelMut.isPending}
-                onClick={() =>
-                  cancelMut.mutate({
-                    id: cancelModal.order.id,
-                    reason: cancelModal.reason,
-                  })
-                }
-                disabled={!cancelModal.reason.trim()}
+                variant="primary"
+                onClick={() => {
+                  if (!preCancel) return;
+                  cancelMut.mutate({ id: preCancel.id });
+                }}
               >
-                Confirmar cancelación
+                Confirmar
               </Button>
             </div>
           </div>
         )}
       </Modal>
+      
     </div>
   );
 };
