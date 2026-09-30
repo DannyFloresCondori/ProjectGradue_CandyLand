@@ -1,18 +1,22 @@
 import type { FC } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
+import { useUIStore } from '@/stores/uiStore'
 import { inventoryService } from '@/services/inventoryService'
 import { orderService } from '@/services/orderService'
 import {
   BellIcon, ChevronDownIcon, XMarkIcon,
+  Bars3Icon,
   ExclamationTriangleIcon, CalendarDaysIcon, NoSymbolIcon,
   CheckIcon, TrashIcon, ArrowRightIcon,
 } from '@heroicons/react/24/outline'
 import { cn, formatRelativeTime, formatDateTime } from '@/lib/utils'
-import type { Notification } from '@/types'
+import { formatStockReturnMessage } from '@/lib/stockMessage'
+import type { Notification, Order } from '@/types'
 import LogoImg from '@/assets/Logo.jpeg'
+import toast from 'react-hot-toast'
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrador',
@@ -45,39 +49,73 @@ const NotificationItem: FC<{
   onRead: (id: string) => void
   onRemove: (id: string) => void
   onNavigate: (link: string | null, id: string) => void
-}> = ({ notif, onRead, onRemove, onNavigate }) => {
+  onStartPreparation?: (id: string) => void
+  onCancelOrder?: (id: string) => void
+}> = ({ notif, onRead, onRemove, onNavigate, onStartPreparation, onCancelOrder }) => {
   const Icon = TYPE_ICON[notif.type]
 
   return (
     <li
       className={cn(
-        'border-l-4 px-4 py-3 transition-colors hover:brightness-95',
+        'min-w-0 border-l-4 px-3 py-3 transition-colors hover:brightness-95 sm:px-4',
         notif.isRead ? 'border-l-gray-200 bg-white' : PRIORITY_STYLES[notif.priority]
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
         <div className="mt-0.5 shrink-0">
           <Icon className={cn('h-4 w-4', notif.isRead ? 'text-gray-400' : 'text-gray-600')} />
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+        <div className="min-w-0 w-full flex-1">
+          <div className="flex min-w-0 items-start gap-2">
             {!notif.isRead && (
               <span className={cn('inline-block h-1.5 w-1.5 shrink-0 rounded-full', PRIORITY_DOT[notif.priority])} />
             )}
-            <p className={cn('text-sm font-medium leading-tight', notif.isRead ? 'text-gray-600' : 'text-gray-900')}>
+            <p className={cn('min-w-0 whitespace-normal wrap-break-word text-sm font-medium leading-tight', notif.isRead ? 'text-gray-600' : 'text-gray-900')}>
               {notif.title}
             </p>
           </div>
-          <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">{notif.message}</p>
+          <p className="mt-0.5 whitespace-normal wrap-break-word text-xs leading-relaxed text-gray-500">{notif.message}</p>
           <p className="mt-1 text-[10px] text-gray-400">{formatRelativeTime(notif.createdAt)}</p>
+          {notif.id.startsWith('scheduled-due-') && onStartPreparation && onCancelOrder && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                onClick={() => onStartPreparation(notif.relatedId ?? '')}
+                className="min-h-10 cursor-pointer rounded bg-primary-500 px-3 py-2 text-[10px] font-semibold text-white hover:bg-primary-600 sm:min-h-0 sm:py-1"
+              >
+                Iniciar preparación
+              </button>
+              <button
+                onClick={() => onCancelOrder(notif.relatedId ?? '')}
+                className="min-h-10 cursor-pointer rounded border border-red-200 px-3 py-2 text-[10px] font-semibold text-red-600 hover:bg-red-50 sm:min-h-0 sm:py-1"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+          {notif.id.startsWith('scheduled-expired-') && onCancelOrder && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                onClick={() => onCancelOrder(notif.relatedId ?? '')}
+                className="min-h-10 cursor-pointer rounded bg-red-500 px-3 py-2 text-[10px] font-semibold text-white hover:bg-red-600 sm:min-h-0 sm:py-1"
+              >
+                Sí, cancelar
+              </button>
+              <button
+                onClick={() => onRead(notif.id)}
+                className="min-h-10 cursor-pointer rounded border border-gray-200 px-3 py-2 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 sm:min-h-0 sm:py-1"
+              >
+                No
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 self-end items-center gap-1 sm:self-start">
           {notif.link && (
             <button
               onClick={() => onNavigate(notif.link, notif.id)}
-              className="cursor-pointer rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors"
+              className="cursor-pointer rounded p-2 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-700 sm:p-1"
               title="Ver detalle"
               aria-label="Ir al módulo relacionado"
             >
@@ -87,7 +125,7 @@ const NotificationItem: FC<{
           {!notif.isRead && (
             <button
               onClick={() => onRead(notif.id)}
-              className="cursor-pointer rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-green-600 transition-colors"
+              className="cursor-pointer rounded p-2 text-gray-400 transition-colors hover:bg-gray-200 hover:text-green-600 sm:p-1"
               title="Marcar como leída"
               aria-label="Marcar como leída"
             >
@@ -96,7 +134,7 @@ const NotificationItem: FC<{
           )}
           <button
             onClick={() => onRemove(notif.id)}
-            className="cursor-pointer rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-red-500 transition-colors"
+            className="cursor-pointer rounded p-2 text-gray-400 transition-colors hover:bg-gray-200 hover:text-red-500 sm:p-1"
             title="Eliminar"
             aria-label="Eliminar notificación"
           >
@@ -111,6 +149,8 @@ const NotificationItem: FC<{
 export const Navbar: FC = () => {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const qc = useQueryClient()
+  const { toggleMobileSidebar } = useUIStore()
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [notifsOpen, setNotifsOpen] = useState(false)
@@ -162,20 +202,41 @@ export const Navbar: FC = () => {
   )
 
   const scheduledNotifications: Notification[] = scheduledOrders
-    .filter((o) => !removedScheduledIds.includes(o.id))
-    .map((o) => ({
-      id: `scheduled-${o.id}`,
-      type: 'order_scheduled',
-      title: `Pedido programado: ${o.customerName ?? 'Cliente General'}`,
-      message: o.scheduledAt
-        ? `Entrega programada para el ${formatDateTime(o.scheduledAt)}.`
-        : 'Pedido programado sin fecha de entrega definida.',
-      priority: 'medium',
-      isRead: Boolean(readScheduledIds[o.id]),
-      createdAt: o.createdAt,
-      relatedId: o.id,
-      link: '/pedidos',
-    }))
+    .filter((o) => !removedScheduledIds.includes(o.id) && o.scheduledAt)
+    .flatMap((o): Notification[] => {
+      const minutesUntilDelivery = (new Date(o.scheduledAt!).getTime() - Date.now()) / 60_000
+      if (o.status === 'pending' && minutesUntilDelivery > 0 && minutesUntilDelivery <= 120) {
+        const remaining = Math.max(1, Math.ceil(minutesUntilDelivery))
+        const timeLabel = remaining >= 60
+          ? `${Math.floor(remaining / 60)} h ${remaining % 60} min`
+          : `${remaining} min`
+        return [{
+          id: `scheduled-due-${o.id}`,
+          type: 'order_scheduled' as const,
+          title: `Pedido programado: ${o.customerName ?? 'Cliente General'}`,
+          message: `Faltan ${timeLabel} para la entrega. ¿Desea comenzar la preparación?`,
+          priority: 'medium' as const,
+          isRead: Boolean(readScheduledIds[`due-${o.id}`]),
+          createdAt: o.createdAt,
+          relatedId: o.id,
+          link: '/pedidos',
+        }]
+      }
+      if (o.status === 'pending' && minutesUntilDelivery <= 0) {
+        return [{
+          id: `scheduled-expired-${o.id}`,
+          type: 'order_scheduled' as const,
+          title: `Pedido programado vencido: ${o.customerName ?? 'Cliente General'}`,
+          message: `El pedido de ${o.customerName ?? 'Cliente General'} ya pasó la fecha de entrega. ¿Desea cancelarlo?`,
+          priority: 'high' as const,
+          isRead: Boolean(readScheduledIds[`expired-${o.id}`]),
+          createdAt: o.createdAt,
+          relatedId: o.id,
+          link: '/pedidos',
+        }]
+      }
+      return []
+    })
 
   const allNotifications = [...alertNotifications, ...scheduledNotifications]
   const unread =
@@ -230,6 +291,41 @@ export const Navbar: FC = () => {
     if (link) navigate(link)
   }
 
+  const startPreparationMut = useMutation({
+    mutationFn: (id: string) => orderService.updateStatus(id, 'preparing'),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
+      toast.success('Preparación iniciada')
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+
+  const cancelOrderMut = useMutation({
+    mutationFn: (order: Order) => orderService.cancel(order.id),
+    onSuccess: (_, order) => {
+      qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
+      qc.invalidateQueries({ queryKey: ['products'] })
+      qc.invalidateQueries({ queryKey: ['products-active'] })
+      qc.invalidateQueries({ queryKey: ['low-stock'] })
+      toast.success(formatStockReturnMessage(order.details))
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+
+  const handleStartPreparation = (id: string) => {
+    if (id) startPreparationMut.mutate(id)
+  }
+
+  const handleCancelOrder = (id: string) => {
+    if (!id) return
+    if (window.confirm('¿Está seguro o segura de que quiere cancelar este pedido programado?')) {
+      const order = scheduledOrders.find((item) => item.id === id)
+      if (order) cancelOrderMut.mutate(order)
+    }
+  }
+
   // Close panels on click-outside and Escape
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -260,6 +356,15 @@ export const Navbar: FC = () => {
 
       <div className="ml-auto flex items-center gap-2">
 
+        <button
+          type="button"
+          onClick={toggleMobileSidebar}
+          className="rounded-md p-2 text-gray-500 hover:bg-gray-100 md:hidden"
+          aria-label="Abrir menú"
+        >
+          <Bars3Icon className="h-5 w-5" />
+        </button>
+
         {/* Notifications */}
         <div className="relative" ref={bellRef}>
           <button
@@ -279,29 +384,29 @@ export const Navbar: FC = () => {
           </button>
 
           {notifsOpen && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-96 rounded-xl border border-gray-200 bg-white shadow-xl">
+            <div className="fixed left-2 right-2 top-14 z-50 mt-2 flex max-h-[calc(100dvh-4.5rem)] min-w-0 w-auto max-w-none flex-col overflow-x-hidden overflow-y-hidden rounded-xl border border-gray-200 bg-white shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[calc(100vw-1rem)] sm:max-w-96">
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-gray-900">Notificaciones</p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-gray-100 px-3 py-3 sm:flex-nowrap sm:justify-between sm:px-4">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <p className="whitespace-normal text-sm font-semibold text-gray-900">Notificaciones</p>
                   {unread > 0 && (
                     <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-600">
                       {unread} sin leer
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
                   {unread > 0 && (
                     <button
                       onClick={handleMarkAllRead}
-                      className="cursor-pointer rounded px-2 py-1 text-xs text-primary-600 hover:bg-primary-50 transition-colors"
+                      className="min-h-10 cursor-pointer rounded px-2 py-2 text-xs text-primary-600 transition-colors hover:bg-primary-50 sm:min-h-0 sm:py-1"
                     >
                       Marcar todas
                     </button>
                   )}
                   <button
                     onClick={() => setNotifsOpen(false)}
-                    className="cursor-pointer rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                    className="cursor-pointer rounded p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 sm:p-1"
                     aria-label="Cerrar"
                   >
                     <XMarkIcon className="h-4 w-4" />
@@ -328,7 +433,7 @@ export const Navbar: FC = () => {
               </div>
 
               {/* List */}
-              <ul className="max-h-80 divide-y divide-gray-50 overflow-y-auto">
+              <ul className="min-h-0 flex-1 divide-y divide-gray-50 overflow-x-hidden overflow-y-auto sm:max-h-80">
                 {displayed.length === 0 ? (
                   <li className="flex flex-col items-center justify-center gap-2 py-10 text-center">
                     <BellIcon className="h-8 w-8 text-gray-300" />
@@ -344,25 +449,27 @@ export const Navbar: FC = () => {
                       onRead={handleMarkRead}
                       onRemove={handleRemoveNotification}
                       onNavigate={handleNavigate}
+                      onStartPreparation={handleStartPreparation}
+                      onCancelOrder={handleCancelOrder}
                     />
                   ))
                 )}
               </ul>
 
               {(alertNotifications.length > 0 || scheduledNotifications.length > 0) && (
-                <div className="border-t border-gray-100 px-4 py-2">
-                  <div className="flex items-center justify-between gap-2">
+                <div className="shrink-0 border-t border-gray-100 px-3 py-3 sm:px-4 sm:py-2">
+                  <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <button
                       onClick={handleClearAll}
-                      className="cursor-pointer text-xs text-gray-400 hover:text-red-500 transition-colors"
+                      className="cursor-pointer self-start text-xs text-gray-400 transition-colors hover:text-red-500 sm:self-auto"
                     >
                       Limpiar todas
                     </button>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-1.5">
                       {scheduledNotifications.length > 0 && (
                         <button
                           onClick={() => { setNotifsOpen(false); navigate('/pedidos') }}
-                          className="cursor-pointer rounded bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                          className="min-h-10 w-full cursor-pointer rounded bg-amber-50 px-3 py-2 text-center text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 sm:min-h-0 sm:w-auto sm:py-1"
                         >
                           Ver pedidos
                         </button>
@@ -370,7 +477,7 @@ export const Navbar: FC = () => {
                       {alertNotifications.length > 0 && (
                         <button
                           onClick={() => { setNotifsOpen(false); navigate('/inventario') }}
-                          className="cursor-pointer rounded bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 hover:bg-primary-100 transition-colors"
+                          className="min-h-10 w-full cursor-pointer rounded bg-primary-50 px-3 py-2 text-center text-[11px] font-semibold text-primary-700 transition-colors hover:bg-primary-100 sm:min-h-0 sm:w-auto sm:py-1"
                         >
                           Ir a inventario
                         </button>

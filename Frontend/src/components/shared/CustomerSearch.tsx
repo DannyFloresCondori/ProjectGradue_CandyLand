@@ -82,7 +82,7 @@ export const CustomerSearch: FC<CustomerSearchProps> = ({ customers, selected, o
   if (selected) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-primary-300 bg-primary-50 px-3 py-2">
-        <UserCircleIcon className="h-4 w-4 flex-shrink-0 text-primary-500" />
+        <UserCircleIcon className="h-4 w-4 shrink-0 text-primary-500" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-primary-800 truncate">{selected.fullName}</p>
           <p className="text-xs text-primary-500">CI: {selected.ci}</p>
@@ -90,7 +90,7 @@ export const CustomerSearch: FC<CustomerSearchProps> = ({ customers, selected, o
         <button
           type="button"
           onClick={() => onSelect(null)}
-          className="cursor-pointer flex-shrink-0 rounded p-0.5 text-primary-400 hover:bg-primary-100 hover:text-primary-700 transition-colors"
+          className="cursor-pointer shrink-0 rounded p-0.5 text-primary-400 hover:bg-primary-100 hover:text-primary-700 transition-colors"
           aria-label="Quitar cliente"
         >
           <XMarkIcon className="h-4 w-4" />
@@ -117,7 +117,7 @@ export const CustomerSearch: FC<CustomerSearchProps> = ({ customers, selected, o
       </div>
 
       {open && query.trim().length >= 1 && (
-        <ul className="absolute left-0 right-0 top-full z-[70] mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+        <ul className="absolute left-0 right-0 top-full z-70 mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
           {/* Loading state for CI search */}
           {ciSearchLoading && isCiInput && (
             <li className="px-3 py-3 text-center text-sm text-gray-500 bg-blue-50">
@@ -139,7 +139,7 @@ export const CustomerSearch: FC<CustomerSearchProps> = ({ customers, selected, o
                 onMouseEnter={() => setFocused(i)}
                 onClick={() => { onSelect(c); setQuery(''); setOpen(false) }}
               >
-                <UserCircleIcon className={cn('h-4 w-4 flex-shrink-0', isCiMatch ? 'text-green-600' : 'text-gray-400')} />
+                <UserCircleIcon className={cn('h-4 w-4 shrink-0', isCiMatch ? 'text-green-600' : 'text-gray-400')} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-gray-900 truncate">{c.fullName}</p>
                   <p className={cn('text-xs', isCiMatch ? 'text-green-700 font-medium' : 'text-gray-500')}>
@@ -167,7 +167,7 @@ export const CustomerSearch: FC<CustomerSearchProps> = ({ customers, selected, o
             onMouseEnter={() => setFocused(matches.length)}
             onClick={() => { onQuickRegister(query); setOpen(false) }}
           >
-            <UserPlusIcon className="h-4 w-4 flex-shrink-0 text-green-600" />
+            <UserPlusIcon className="h-4 w-4 shrink-0 text-green-600" />
             <p className="text-sm font-medium text-green-700">
               {isCiInput && !ciSearchLoading ? 'Registrar nuevo cliente' : `Registrar cliente${query ? ` "${query}"` : ''}`}
             </p>

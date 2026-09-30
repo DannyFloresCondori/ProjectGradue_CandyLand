@@ -19,6 +19,7 @@ import { QuantityControl } from '@/components/shared/QuantityControl'
 import { ToppingSelector } from '@/components/shared/ToppingSelector'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
+import { formatStockReturnMessage } from '@/lib/stockMessage'
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import type { Sale, SaleDetailInput, PaymentType, Customer, Promotion, Product, Category } from '@/types'
@@ -59,10 +60,11 @@ const Ticket: FC<{ sale: Sale; onClose: () => void; onPrintTicket?: (sale: Sale)
       {sale.deliveryAddress && <p><span className="font-medium">Dirección:</span> {sale.deliveryAddress}</p>}
     </div>
     <div className="border-t border-dashed border-gray-300 pt-3">
-      <table className="w-full text-xs">
+      <div className="w-full overflow-x-auto">
+      <table className="w-full table-fixed text-[10px] sm:min-w-130 sm:text-xs">
         <thead>
           <tr className="text-gray-500">
-            <th className="text-left pb-1">Producto</th>
+            <th className="w-[42%] text-left pb-1">Producto</th>
             <th className="text-center pb-1">Cant.</th>
             <th className="text-right pb-1">P.U.</th>
             <th className="text-right pb-1">Subtotal</th>
@@ -71,10 +73,15 @@ const Ticket: FC<{ sale: Sale; onClose: () => void; onPrintTicket?: (sale: Sale)
         <tbody className="divide-y divide-gray-50">
           {sale.details.map(d => (
             <tr key={d.id}>
-              <td className="py-1">
+              <td className="wrap-break-word py-1">
                 <div>{d.productName}</div>
                 {d.toppings.length > 0 && (
                   <div className="text-[10px] text-gray-500">+ {d.toppings.map((topping) => topping.toppingName).join(', ')}</div>
+                )}
+                {Number(d.discountApplied ?? 0) > 0 && (
+                  <div className="text-[9px] text-pink-600">
+                    Desc. {Number(d.discountApplied ?? 0)}%{d.promotionName ? ` · ${d.promotionName}` : ''}
+                  </div>
                 )}
               </td>
               <td className="py-1 text-center">{d.quantity}</td>
@@ -84,6 +91,7 @@ const Ticket: FC<{ sale: Sale; onClose: () => void; onPrintTicket?: (sale: Sale)
           ))}
         </tbody>
       </table>
+      </div>
     </div>
     <div className="border-t border-gray-300 pt-2 flex justify-between items-center font-bold">
       <span>TOTAL</span><span>{formatCurrency(sale.total)}</span>
@@ -112,6 +120,9 @@ const SaleStatusBadge: FC<{ status: Sale['status'] }> = ({ status }) => {
   return <Badge variant={config.variant as any}>{config.label}</Badge>
 }
 
+const getSaleTypeKey = (sale: Sale): 'local' | 'delivery' | 'scheduled' =>
+  sale.orderType === 'scheduled' ? 'scheduled' : sale.orderType === 'delivery' ? 'delivery' : 'local'
+
 // ─── SalesPage ────────────────────────────────────────────────────────────────
 
 export const SalesPage: FC = () => {
@@ -128,6 +139,7 @@ export const SalesPage: FC = () => {
   const [isGeneralClient, setIsGeneralClient] = useState(false)
   const [stockMap, setStockMap] = useState<Record<string, number>>({})
   const [salesPage, setSalesPage] = useState(1)
+  const [selectedType, setSelectedType] = useState<'all' | 'local' | 'delivery' | 'scheduled'>('all')
   const salesPageSize = 1
 
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
@@ -176,16 +188,17 @@ export const SalesPage: FC = () => {
 
   const groupedSales = useMemo(() => {
     const sortedSales = [...sales].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    const groups = new Map<string, { key: string; label: string; total: number; sales: Sale[] }>()
+    const groups = new Map<string, { key: string; label: string; total: number; sales: Sale[]; typeCounts: { local: number; delivery: number; scheduled: number } }>()
 
     sortedSales.forEach((sale) => {
       const saleDate = new Date(sale.createdAt)
       const dayKey = saleDate.toISOString().split('T')[0]
       const existing = groups.get(dayKey)
+      const resolvedType = getSaleTypeKey(sale)
 
       if (existing) {
-        // only include non-cancelled sales in the day total
         if (sale.status !== 'canceled') existing.total += sale.total
+        existing.typeCounts[resolvedType] += 1
         existing.sales.push(sale)
         return
       }
@@ -198,15 +211,51 @@ export const SalesPage: FC = () => {
           month: 'long',
           year: 'numeric',
         }),
-        // initialize total only with non-cancelled sale amount
         total: sale.status !== 'canceled' ? sale.total : 0,
+        typeCounts: { local: resolvedType === 'local' ? 1 : 0, delivery: resolvedType === 'delivery' ? 1 : 0, scheduled: resolvedType === 'scheduled' ? 1 : 0 },
         sales: [sale],
       })
     })
 
     return Array.from(groups.values())
   }, [sales])
-  const paginatedSales = groupedSales.slice((salesPage - 1) * salesPageSize, salesPage * salesPageSize)
+
+  const currentGroup = groupedSales[(salesPage - 1) * salesPageSize] ?? null
+  const visibleDateSales = currentGroup?.sales ?? []
+
+  const salesTypeCounts = useMemo(() => {
+    return visibleDateSales.reduce(
+      (counts, sale) => {
+        const key = getSaleTypeKey(sale)
+        counts[key] += 1
+        return counts
+      },
+      { local: 0, delivery: 0, scheduled: 0 },
+    )
+  }, [visibleDateSales])
+
+  useEffect(() => {
+    setSalesPage(1)
+  }, [selectedType])
+
+  const paginatedSales = useMemo(() => {
+    return groupedSales
+      .slice((salesPage - 1) * salesPageSize, salesPage * salesPageSize)
+      .map((group) => {
+        const salesForType = selectedType === 'all'
+          ? group.sales
+          : group.sales.filter((sale) => getSaleTypeKey(sale) === selectedType)
+
+        const total = salesForType.reduce((sum, sale) => sum + (sale.status === 'canceled' ? 0 : sale.total), 0)
+
+        return {
+          ...group,
+          sales: salesForType,
+          total,
+        }
+      })
+  }, [groupedSales, salesPage, selectedType])
+
   const todayKey = new Date().toISOString().split('T')[0]
   const todayPage = groupedSales.findIndex((group) => group.key === todayKey) + 1
 
@@ -271,17 +320,31 @@ export const SalesPage: FC = () => {
   const cartTotal = cart.reduce((sum, item) => {
     const product = products.find((p: Product) => p.id === item.productId)
     if (!product) return sum
+
     const promotion = product.promotion
-    if (!promotion || !promotion.isActive) return sum + item.unitPrice * item.quantity
+    if (!promotion) return sum + item.unitPrice * item.quantity
+
+    const today = new Date().toISOString().slice(0, 10)
+    const promotionIsCurrent = Boolean(
+      promotion.isActive &&
+      (!promotion.startDate || promotion.startDate.slice(0, 10) <= today) &&
+      (!promotion.endDate || promotion.endDate.slice(0, 10) >= today),
+    )
+
+    if (!promotionIsCurrent) return sum + item.unitPrice * item.quantity
+
     const discountPercent = Number(promotion.discountPercent ?? 0)
+
     if (promotion.type === 'discount') {
       const unitDiscounted = item.unitPrice * (1 - discountPercent / 100)
       return sum + unitDiscounted * item.quantity
     }
+
     if (promotion.type === 'buy_one_get_one') {
       const paidUnits = Math.ceil(item.quantity / 2)
       return sum + item.unitPrice * paidUnits
     }
+
     return sum + item.unitPrice * item.quantity
   }, 0)
 
@@ -309,6 +372,7 @@ export const SalesPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['sales'] })
       qc.invalidateQueries({ queryKey: ['products'] })
       qc.invalidateQueries({ queryKey: ['products-active'] })
+      qc.invalidateQueries({ queryKey: ['low-stock'] })
       qc.invalidateQueries({ queryKey: ['dashboard-sales'] })
       qc.invalidateQueries({ queryKey: ['dashboard-metrics'] })
       qc.invalidateQueries({ queryKey: ['alerts'] })
@@ -321,8 +385,11 @@ export const SalesPage: FC = () => {
 
   const cancelMut = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) => saleService.cancel(id, reason),
-    onSuccess: () => {
+    onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ['sales'] });
+      qc.invalidateQueries({ queryKey: ['products'] })
+      qc.invalidateQueries({ queryKey: ['products-active'] })
+      qc.invalidateQueries({ queryKey: ['low-stock'] })
       qc.invalidateQueries({ queryKey: ['dashboard-sales'] })
       qc.invalidateQueries({ queryKey: ['dashboard-metrics'] })
       qc.invalidateQueries({ queryKey: ['alerts'] })
@@ -334,7 +401,9 @@ export const SalesPage: FC = () => {
       } catch (e) {
         // fallback: already invalidated by key above
       }
-      toast.success('Venta anulada'); setCancelModal(null)
+      const canceledSale = sales.find((sale) => sale.id === id)
+      toast.success(canceledSale ? formatStockReturnMessage(canceledSale.details) : 'Stock restituido.')
+      setCancelModal(null)
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -352,10 +421,10 @@ export const SalesPage: FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold">Ventas</h1>
-          <div className="ml-2 flex items-center gap-1">
+          <div className="ml-0 flex flex-wrap items-center gap-1 sm:ml-2">
             <Button
               variant="secondary"
               size="icon"
@@ -390,6 +459,29 @@ export const SalesPage: FC = () => {
         <Button onClick={() => { resetStockMap(); setIsNewOpen(true) }} size="sm"><PlusIcon className="h-4 w-4" />Nueva venta</Button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        {[
+          { key: 'all', label: 'Todos' },
+          { key: 'local', label: `Local (${salesTypeCounts.local})` },
+          { key: 'delivery', label: `Domicilio (${salesTypeCounts.delivery})` },
+          { key: 'scheduled', label: `Programados (${salesTypeCounts.scheduled})` },
+        ].map((filter) => (
+          <button
+            key={filter.key}
+            type="button"
+            onClick={() => setSelectedType(filter.key as 'all' | 'local' | 'delivery' | 'scheduled')}
+            className={cn(
+              'cursor-pointer rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+              selectedType === filter.key
+                ? 'border-pink-500 bg-pink-500 text-white shadow-sm'
+                : 'border-gray-200 bg-white text-gray-600 hover:border-pink-200 hover:text-pink-600',
+            )}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-4">
         {paginatedSales.map((group) => (
           <Card key={group.key}>
@@ -397,7 +489,15 @@ export const SalesPage: FC = () => {
               <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold capitalize text-gray-900">{group.label}</p>
-                  <p className="text-xs text-gray-500">{group.sales.length} venta{group.sales.length === 1 ? '' : 's'}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+                    <span>{group.sales.length} venta{group.sales.length === 1 ? '' : 's'}</span>
+                    <span>·</span>
+                    <span>Local {group.typeCounts.local}</span>
+                    <span>·</span>
+                    <span>Domicilio {group.typeCounts.delivery}</span>
+                    <span>·</span>
+                    <span>Programados {group.typeCounts.scheduled}</span>
+                  </div>
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Total</p>
@@ -429,16 +529,20 @@ export const SalesPage: FC = () => {
                         {sale.details.map((detail) => (
                           <div key={detail.id} className="text-xs text-gray-600">
                             <span className="font-medium">{detail.productName}</span> x{detail.quantity}
-                            <PromotionBadge promotion={products.find((product) => product.id === detail.productId)?.promotion} compact />
                             {detail.toppings.length > 0 && (
                               <span className="text-gray-500"> · {detail.toppings.map((topping) => topping.toppingName).join(', ')}</span>
+                            )}
+                            {Number(detail.discountApplied ?? 0) > 0 && (
+                              <span className="ml-1 text-pink-600">
+                                · Desc. {Number(detail.discountApplied ?? 0)}%{detail.promotionName ? ` · ${detail.promotionName}` : ''}
+                              </span>
                             )}
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between gap-3 md:justify-end">
+                    <div className="flex flex-wrap items-center justify-between gap-3 md:justify-end">
                       <div className="text-right">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Monto</p>
                         <p className="text-sm font-semibold text-gray-900">{formatCurrency(sale.total)}</p>
@@ -470,7 +574,7 @@ export const SalesPage: FC = () => {
 
       {/* ─── POS Modal ─────────────────────────────────────────────────────── */}
       <Modal isOpen={isNewOpen} onClose={() => { setIsNewOpen(false); resetSale() }} title="Registrar venta" size="2xl">
-        <div className="flex h-[70vh] gap-0 -mx-5 -mb-5 overflow-hidden">
+        <div className="flex h-[78vh] min-w-0 flex-col gap-0 -mx-4 -mb-4 overflow-hidden sm:h-[70vh] sm:-mx-5 sm:-mb-5 md:h-[70vh] md:flex-row">
 
           <ProductCatalog
             products={catalogProducts}
@@ -479,9 +583,9 @@ export const SalesPage: FC = () => {
           />
 
           {/* RIGHT — Order panel */}
-          <div className="flex w-[42%] flex-col">
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col md:w-[42%] md:flex-none">
             <div className="border-b border-gray-100 px-4 py-3 space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-1">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Cliente</p>
                 {!selectedCustomer && customers.length > 0 && (
                   <p className="text-[9px] text-gray-400">Busca por CI del cliente</p>

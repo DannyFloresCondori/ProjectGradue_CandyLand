@@ -2,6 +2,7 @@ import {
   ArrayUnique,
   IsArray,
   IsBoolean,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -9,6 +10,7 @@ import {
   IsString,
   IsUUID,
   Length,
+  Matches,
   Min,
 } from 'class-validator';
 
@@ -17,11 +19,13 @@ export class CreateProductDto {
   @IsString()
   @IsNotEmpty({ message: 'El nombre del producto es obligatorio' })
   @Length(2, 100)
+  @Matches(/[A-Za-zÁÉÍÓÚáéíóúÑñ]/, { message: 'El nombre debe contener al menos una letra' })
   name!: string;
 
   @IsOptional()
   @IsString()
   @Length(5, 255)
+  @Matches(/[A-Za-zÁÉÍÓÚáéíóúÑñ]/, { message: 'La descripción debe contener al menos una letra' })
   description?: string;
 
   @IsNumber(
@@ -32,14 +36,15 @@ export class CreateProductDto {
   price!: number;
 
   @IsNumber()
+  @IsInt({ message: 'El stock debe ser un número entero' })
   @Min(0, { message: 'El stock no puede ser negativo' })
   current_stock!: number;
 
   @IsNumber()
+  @IsInt({ message: 'El stock mínimo debe ser un número entero' })
   @Min(0, { message: 'El stock no puede ser negativo' })
   minimum_stock!: number;
 
-  @IsOptional()
   @IsString()
   image?: string;
 

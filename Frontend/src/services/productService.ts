@@ -34,6 +34,8 @@ function normalizeProduct(item: any): Product {
       type: promotion.type,
       discountPercent: Number(promotion.discount_percent ?? promotion.value ?? promotion.discountPercent ?? 0),
       isActive: promotion.is_active ?? promotion.isActive ?? true,
+      startDate: promotion.start_date ?? promotion.startDate ?? '',
+      endDate: promotion.end_date ?? promotion.endDate ?? '',
     } : null,
     createdAt: item.createdAt ?? new Date().toISOString(),
   }

@@ -7,6 +7,9 @@ interface UIState {
   sidebarCollapsed: boolean
   toggleSidebar: () => void
   setSidebarCollapsed: (val: boolean) => void
+  mobileSidebarOpen: boolean
+  toggleMobileSidebar: () => void
+  setMobileSidebarOpen: (val: boolean) => void
 
   notifications: Notification[]
   unreadCount: () => number
@@ -22,6 +25,9 @@ export const useUIStore = create<UIState>()(
       sidebarCollapsed: false,
       toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setSidebarCollapsed: (val) => set({ sidebarCollapsed: val }),
+      mobileSidebarOpen: false,
+      toggleMobileSidebar: () => set(s => ({ mobileSidebarOpen: !s.mobileSidebarOpen })),
+      setMobileSidebarOpen: (val) => set({ mobileSidebarOpen: val }),
 
       notifications: seedNotifications,
 
@@ -51,6 +57,7 @@ export const useUIStore = create<UIState>()(
       name: 'candyland-ui',
       partialize: (s) => ({
         sidebarCollapsed: s.sidebarCollapsed,
+        mobileSidebarOpen: false,
         notifications: s.notifications,
       }),
     }

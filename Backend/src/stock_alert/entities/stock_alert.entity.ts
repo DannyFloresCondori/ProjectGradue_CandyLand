@@ -21,6 +21,9 @@ export class StockAlert {
   @Column({ type: 'int', default: 0 })
   stock_quantity!: number;
 
+  @Column({ type: 'int', default: 0 })
+  quantity_increased!: number;
+
   @Column({ type: 'boolean', default: false })
   is_resolved!: boolean;
 
@@ -29,6 +32,9 @@ export class StockAlert {
 
   @CreateDateColumn({ type: 'timestamp', name: 'alerted_at' })
   alerted_at!: Date;
+
+  @Column({ type: 'timestamp', name: 'stock_updated_at', nullable: true })
+  stock_updated_at?: Date | null;
 
   @Column({
     type: 'timestamp',

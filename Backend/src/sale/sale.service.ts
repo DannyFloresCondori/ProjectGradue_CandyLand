@@ -199,8 +199,13 @@ export class SaleService {
   ): { finalPrice: number; discountApplied: number; subtotal: number } {
     const now = new Date();
 
-    // Sin promoción, inactiva o vencida → precio normal
-    if (!promotion || !promotion.is_active || new Date(promotion.end_date) < now) {
+    // Sin promoción, inactiva, aún no iniciada o vencida → precio normal
+    if (
+      !promotion ||
+      !promotion.is_active ||
+      (promotion.start_date && new Date(promotion.start_date) > now) ||
+      new Date(promotion.end_date) < now
+    ) {
       return {
         finalPrice: price,
         discountApplied: 0,

@@ -6,7 +6,7 @@ function normalizePaymentType(paymentType: string | undefined): Sale['paymentTyp
   return 'cash'
 }
 
-function normalizeSale(item: any): Sale {
+export function normalizeSale(item: any): Sale {
   const orderTypeRaw = item.order?.type ?? item.order?.order_type ?? item.order?.orderType ?? item.orderType ?? null
   const normalizedOrderType = orderTypeRaw === 'scheduled' ? 'scheduled' : orderTypeRaw === 'delivery' ? 'delivery' : null
 
@@ -32,6 +32,9 @@ function normalizeSale(item: any): Sale {
       productName: detail.product?.name ?? detail.productName ?? '',
       quantity: Number(detail.quantity ?? 0),
       unitPrice: Number(detail.priceUnique ?? detail.price_unique ?? detail.unitPrice ?? detail.product?.price ?? 0),
+      finalPrice: Number(detail.finalPrice ?? detail.final_price ?? detail.unitPrice ?? detail.product?.price ?? 0),
+      discountApplied: Number(detail.discountApplied ?? detail.discount_applied ?? 0),
+      promotionName: detail.product?.promotion?.name ?? detail.promotion?.name ?? null,
       subtotal: Number(detail.subtotal ?? 0),
       toppings: Array.isArray(detail.toppings) ? detail.toppings.map((topping: any) => ({
         toppingId: topping.topping?.id ?? topping.toppingId ?? topping.id ?? '',

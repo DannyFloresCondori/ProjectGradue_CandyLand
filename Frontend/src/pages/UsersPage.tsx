@@ -21,7 +21,7 @@ const ROLE_LABELS: Record<string, string> = { admin: 'Administrador', cajero: 'C
 
 const schema = z.object({
   roleId: z.string().min(1, 'Seleccione un rol'),
-  name: z.string().min(2, 'Mínimo 2 caracteres'),
+  name: z.string().trim().min(2, 'Mínimo 2 caracteres').regex(/^[\p{L}][\p{L}\s.'-]*$/u, 'El nombre solo puede contener letras'),
   email: z.string().optional().or(z.literal('')),
   phone: z.string().optional().or(z.literal('')),
   password: z.string().min(6, 'Mínimo 6 caracteres'),
@@ -46,8 +46,8 @@ const schema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['email'], message: 'Email inválido' })
   }
 
-  if (hasPhone && !/^\+?[0-9\s\-()]{7,15}$/.test(hasPhone)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['phone'], message: 'Teléfono inválido' })
+  if (hasPhone && !/^\d{7,15}$/.test(hasPhone)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['phone'], message: 'El teléfono debe contener únicamente números' })
   }
 })
 type FormData = z.infer<typeof schema>
@@ -79,8 +79,8 @@ export const UsersPage: FC = () => {
         <h1 className="text-xl font-semibold">Usuarios</h1>
         <Button onClick={openCreate} size="sm"><PlusIcon className="h-4 w-4" />Nuevo usuario</Button>
       </div>
-      <Card><CardBody className="p-0">
-        <table className="w-full text-sm">
+      <Card><CardBody className="overflow-x-auto p-0">
+        <table className="min-w-170 w-full text-sm">
           <thead className="border-b border-gray-100 bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Usuario</th>

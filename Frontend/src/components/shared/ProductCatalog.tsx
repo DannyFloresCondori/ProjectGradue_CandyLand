@@ -23,7 +23,7 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
   })
 
   return (
-    <div className="flex w-[58%] flex-col border-r border-gray-100 min-h-0">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col border-b border-gray-100 md:w-[58%] md:flex-none md:border-b-0 md:border-r">
       {/* Search + Category filters */}
       <div className="border-b border-gray-100 px-4 pt-3 pb-2 space-y-2 shrink-0">
         <div className="relative">
@@ -73,10 +73,16 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
             <p className="text-sm">Sin resultados</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-3">
             {filtered.map(p => {
               const outOfStock = p.stock === 0
               const lowStock = p.stock > 0 && p.stock <= p.minStock
+              const today = new Date().toISOString().slice(0, 10)
+              const promotionIsCurrent = Boolean(
+                p.promotion?.isActive &&
+                (!p.promotion.startDate || p.promotion.startDate.slice(0, 10) <= today) &&
+                (!p.promotion.endDate || p.promotion.endDate.slice(0, 10) >= today),
+              )
               return (
                 <button
                   key={p.id}
@@ -84,7 +90,7 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
                   disabled={outOfStock}
                   onClick={() => onAddProduct(p.id)}
                   className={cn(
-                    'group relative min-h-23.5 cursor-pointer rounded-lg border p-3 text-left transition-all',
+                    'group relative min-h-24 min-w-0 cursor-pointer rounded-lg border p-2.5 text-left transition-all sm:p-3',
                     outOfStock
                       ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-50'
                       : 'border-gray-200 hover:border-primary-400 hover:bg-primary-50 hover:shadow-sm active:scale-[0.98]'
@@ -100,8 +106,8 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
                       AGOTADO
                     </span>
                   )}
-                  <p className="font-medium text-sm text-gray-900 leading-tight truncate pr-10">{p.name}</p>
-                  {p.promotion?.isActive && p.promotion.type === 'discount' && Number(p.promotion.discountPercent) > 0 ? (
+                  <p className="wrap-break-word font-medium text-xs leading-tight text-gray-900 sm:text-sm">{p.name}</p>
+                  {promotionIsCurrent && p.promotion?.type === 'discount' && Number(p.promotion.discountPercent) > 0 ? (
                     <div className="mt-1 flex items-baseline gap-1.5">
                       <span className="text-[10px] text-gray-400 line-through">{formatCurrency(p.price)}</span>
                       <span className="text-xs font-bold text-emerald-600">
@@ -111,7 +117,7 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
                   ) : (
                     <p className="mt-1 text-xs font-bold text-primary-600">{formatCurrency(p.price)}</p>
                   )}
-                  {p.promotion?.isActive && (
+                  {promotionIsCurrent && (
                     <div className="mt-1 max-w-full">
                       <PromotionBadge promotion={p.promotion} compact />
                     </div>

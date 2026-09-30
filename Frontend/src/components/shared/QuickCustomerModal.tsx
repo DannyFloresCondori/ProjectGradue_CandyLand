@@ -13,7 +13,7 @@ import type { Customer } from '@/types'
 
 const quickSchema = z.object({
   ci:       z.string().trim().min(5, 'Mínimo 5 dígitos').regex(/^\d+$/, 'Solo números'),
-  fullName: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(2, 'El nombre es obligatorio.')),
+  fullName: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(2, 'El nombre es obligatorio.').regex(/^[\p{L}][\p{L}\s.'-]*$/u, 'El nombre solo puede contener letras.')),
   phone:    z.string().regex(/^[67]\d{7}$/, 'Ingrese un número de teléfono boliviano válido de 8 dígitos.'),
   address:  z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().min(5, 'La dirección es obligatoria.')),
 })

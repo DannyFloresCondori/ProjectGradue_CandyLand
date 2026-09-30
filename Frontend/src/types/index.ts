@@ -64,6 +64,8 @@ export interface Product {
     type?: string
     discountPercent?: number
     isActive?: boolean
+    startDate?: string
+    endDate?: string
   } | null
 }
 
@@ -93,6 +95,9 @@ export interface OrderDetail {
   productName: string
   quantity: number
   unitPrice: number
+  finalPrice?: number
+  discountApplied?: number
+  promotionName?: string | null
   subtotal: number
   toppings: OrderDetailTopping[]
 }
@@ -126,6 +131,9 @@ export interface SaleDetail {
   productName: string
   quantity: number
   unitPrice: number
+  finalPrice?: number
+  discountApplied?: number
+  promotionName?: string | null
   subtotal: number
   toppings: OrderDetailTopping[]
 }
@@ -166,9 +174,10 @@ export interface StockAlert {
   productName: string
   currentStock: number
   minStock: number
-  stockQuantity?: number
+  quantityIncreased?: number
   isResolved: boolean
   alertedAt: string
+  stockUpdatedAt?: string | null
   resolvedAt: string | null
   message?: string
 }

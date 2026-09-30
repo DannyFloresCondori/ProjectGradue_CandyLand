@@ -22,6 +22,7 @@ export const LoginPage: FC = () => {
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [lockUntil, setLockUntil] = useState<number | null>(null)
   const [isLocked, setIsLocked] = useState(false)
+  const [remainingSeconds, setRemainingSeconds] = useState(0)
   const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
@@ -29,26 +30,26 @@ export const LoginPage: FC = () => {
   useEffect(() => {
     if (!lockUntil) {
       setIsLocked(false)
-      return
-    }
-
-    const remaining = lockUntil - Date.now()
-
-    if (remaining <= 0) {
-      setLockUntil(null)
-      setFailedAttempts(0)
-      setIsLocked(false)
+      setRemainingSeconds(0)
       return
     }
 
     setIsLocked(true)
-    const timeout = window.setTimeout(() => {
-      setLockUntil(null)
-      setFailedAttempts(0)
-      setIsLocked(false)
-    }, remaining)
+    const updateRemainingTime = () => {
+      const seconds = Math.max(0, Math.ceil((lockUntil - Date.now()) / 1000))
+      setRemainingSeconds(seconds)
 
-    return () => window.clearTimeout(timeout)
+      if (seconds === 0) {
+        setLockUntil(null)
+        setFailedAttempts(0)
+        setIsLocked(false)
+      }
+    }
+
+    updateRemainingTime()
+    const interval = window.setInterval(updateRemainingTime, 1000)
+
+    return () => window.clearInterval(interval)
   }, [lockUntil])
 
   const onSubmit = async (data: FormData) => {
@@ -65,19 +66,16 @@ export const LoginPage: FC = () => {
       reset()
       navigate('/dashboard', { replace: true })
     } catch (err) {
-      setFailedAttempts(prev => {
-        const nextAttempts = prev + 1
+      const nextAttempts = failedAttempts + 1
+      setFailedAttempts(nextAttempts)
 
-        if (nextAttempts >= 5) {
-          const waitMs = Math.min(30000 + (nextAttempts - 5) * 10000, 120000)
-          setLockUntil(Date.now() + waitMs)
-          toast.error(`Demasiados intentos fallidos. Espera ${Math.round(waitMs / 1000)} segundos antes de volver a intentarlo.`)
-        } else {
-          toast.error(err instanceof Error ? err.message : 'Error al iniciar sesión')
-        }
-
-        return nextAttempts
-      })
+      if (nextAttempts >= 5) {
+        const waitMs = Math.min(30000 + (nextAttempts - 5) * 10000, 120000)
+        setLockUntil(Date.now() + waitMs)
+        toast.error(`Demasiados intentos fallidos. Espera ${Math.round(waitMs / 1000)} segundos antes de volver a intentarlo.`)
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Error al iniciar sesión')
+      }
     }
   }
 
@@ -106,7 +104,7 @@ export const LoginPage: FC = () => {
               <p className="mt-1 text-sm text-gray-600">Bienvenido de nuevo</p>
               {isLocked && lockUntil && (
                 <p className="mt-2 text-sm font-medium text-rose-600">
-                  Cuenta bloqueada por {Math.max(1, Math.ceil((lockUntil - Date.now()) / 1000))} segundos.
+                  Cuenta bloqueada por varios intentos. Espera {remainingSeconds} segundos para volver a intentarlo.
                 </p>
               )}
             </div>

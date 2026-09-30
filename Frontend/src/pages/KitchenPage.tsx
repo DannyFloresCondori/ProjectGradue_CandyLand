@@ -8,15 +8,15 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { formatDateTime, formatElapsedTime, getElapsedMinutes } from '@/lib/utils'
+import { formatDateTime, formatElapsedTime } from '@/lib/utils'
 import {
   ClipboardDocumentCheckIcon, ArrowPathIcon,
   ClockIcon, ExclamationTriangleIcon, MapPinIcon, PhoneIcon,
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/utils'
+import { formatStockReturnMessage } from '@/lib/stockMessage'
 import { useAuthStore } from '@/stores/authStore'
-import { ordersSocket } from '@/lib/ordersSocket'
 import type { Order, OrderStatus, PaymentType } from '@/types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -54,21 +54,16 @@ const getDeliveryAlert = (order: Order) => {
   return null
 }
 
-const UrgencyBadge: FC<{ createdAt: string }> = ({ createdAt }) => {
-  const mins = getElapsedMinutes(createdAt)
-  if (mins < 8) return (
-    <span className="flex items-center gap-1 text-[10px] font-medium text-gray-400">
-      <ClockIcon className="h-3 w-3" />{formatElapsedTime(createdAt)}
-    </span>
-  )
-  if (mins < 15) return (
-    <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600">
-      <ClockIcon className="h-3 w-3" />{formatElapsedTime(createdAt)}
-    </span>
-  )
+const UrgencyBadge: FC<{ orderType: Order['orderType']; scheduledAt?: string | null }> = ({ orderType, scheduledAt }) => {
+  if (orderType !== 'scheduled' || !scheduledAt) return null
+
+  const elapsedMs = Date.now() - new Date(scheduledAt).getTime()
+  if (elapsedMs <= 0) return null
+
   return (
     <span className="flex items-center gap-1 text-[10px] font-bold text-red-600">
-      <ExclamationTriangleIcon className="h-3 w-3" />{formatElapsedTime(createdAt)} — URGENTE
+      <ExclamationTriangleIcon className="h-3 w-3" />
+      No entregado hace {formatElapsedTime(scheduledAt)}
     </span>
   )
 }
@@ -97,7 +92,7 @@ const KitchenCard: FC<{
           <p className="font-bold text-sm text-gray-900">#{order.id.slice(-6).toUpperCase()}</p>
           <span className="text-base">{TYPE_ICONS[order.orderType]}</span>
         </div>
-        <UrgencyBadge createdAt={order.createdAt} />
+        <UrgencyBadge orderType={order.orderType} scheduledAt={order.scheduledAt} />
       </div>
 
       <CardBody className="py-3 space-y-2">
@@ -219,6 +214,9 @@ export const KitchenPage: FC = () => {
   const qc = useQueryClient()
   const { user, hasRole } = useAuthStore()
   const canDeliverOrders = hasRole(['admin', 'cajero'])
+  const [clock, setClock] = useState(() => Date.now())
+  const [cancelScheduledOrder, setCancelScheduledOrder] = useState<Order | null>(null)
+  const [expiredReminder, setExpiredReminder] = useState<Order | null>(null)
   const [deliveryDraft, setDeliveryDraft] = useState<{ order: Order | null; paymentType: PaymentType }>({ order: null, paymentType: 'cash' })
 
   const { data: orders = [], isLoading, isFetching, dataUpdatedAt, error } = useQuery({
@@ -232,19 +230,9 @@ export const KitchenPage: FC = () => {
   })
 
   useEffect(() => {
-    const refreshOrders = () => {
-      qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
-    }
-
-    ordersSocket.on('order.created', refreshOrders)
-    ordersSocket.connect()
-    ordersSocket.emit('orders.subscribe')
-
-    return () => {
-      ordersSocket.off('order.created', refreshOrders)
-      ordersSocket.disconnect()
-    }
-  }, [qc])
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const updateMut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: OrderStatus }) => orderService.updateStatus(id, status),
@@ -255,6 +243,21 @@ export const KitchenPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: ['active-alerts'] })
       toast.success(status === 'ready' ? '¡Pedido listo para entregar!' : 'Preparación iniciada')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const cancelMut = useMutation({
+    mutationFn: (order: Order) => orderService.cancel(order.id),
+    onSuccess: (_, order) => {
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
+      qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['pending-orders'] })
+      qc.invalidateQueries({ queryKey: ['products'] })
+      qc.invalidateQueries({ queryKey: ['products-active'] })
+      qc.invalidateQueries({ queryKey: ['low-stock'] })
+      setCancelScheduledOrder(null)
+      toast.success(formatStockReturnMessage(order.details))
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -274,6 +277,9 @@ export const KitchenPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
       qc.invalidateQueries({ queryKey: ['orders'] })
       qc.invalidateQueries({ queryKey: ['sales'] })
+      qc.invalidateQueries({ queryKey: ['products'] })
+      qc.invalidateQueries({ queryKey: ['products-active'] })
+      qc.invalidateQueries({ queryKey: ['low-stock'] })
       qc.invalidateQueries({ queryKey: ['dashboard-sales'] })
       qc.invalidateQueries({ queryKey: ['dashboard-metrics'] })
       qc.invalidateQueries({ queryKey: ['pending-orders'] })
@@ -315,7 +321,29 @@ export const KitchenPage: FC = () => {
   const pending = orders.filter(o => o.status === 'pending')
   const preparing = orders.filter(o => o.status === 'preparing')
   const ready = orders.filter(o => o.status === 'ready')
+  const scheduledAlerts = pending.filter((order) => {
+    if (order.orderType !== 'scheduled' || !order.scheduledAt) return false
+    const minutesUntilDelivery = (new Date(order.scheduledAt).getTime() - clock) / 60_000
+    return minutesUntilDelivery > 0 && minutesUntilDelivery <= 120
+  })
+  const expiredScheduledOrders = pending.filter((order) => (
+    order.orderType === 'scheduled' &&
+    Boolean(order.scheduledAt) &&
+    new Date(order.scheduledAt!).getTime() <= clock
+  ))
   const hasVisibleOrders = orders.length > 0 || pending.length > 0 || preparing.length > 0 || ready.length > 0
+
+  useEffect(() => {
+    if (expiredScheduledOrders.length === 0) {
+      setExpiredReminder(null)
+      return
+    }
+
+    setExpiredReminder((current) => {
+      if (current && expiredScheduledOrders.some((order) => order.id === current.id)) return current
+      return expiredScheduledOrders[0]
+    })
+  }, [expiredScheduledOrders])
 
   const lastUpdate = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'
 
@@ -324,14 +352,14 @@ export const KitchenPage: FC = () => {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">Pantalla de Preparación</h1>
           <p className="text-xs text-gray-400 mt-0.5">
             Actualizado: {lastUpdate} · Auto-refresco cada 20 s
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Badge
             variant={orders.length > 0 ? 'warning' : 'success'}
             className="text-sm px-3 py-1"
@@ -351,6 +379,79 @@ export const KitchenPage: FC = () => {
           </button>
         </div>
       </div>
+
+      {scheduledAlerts.length > 0 && (
+        <div className="space-y-3">
+          {scheduledAlerts.map((order) => {
+            const minutesUntilDelivery = Math.max(1, Math.ceil((new Date(order.scheduledAt!).getTime() - clock) / 60_000))
+            const remaining = minutesUntilDelivery >= 60
+              ? `${Math.floor(minutesUntilDelivery / 60)} h ${minutesUntilDelivery % 60} min`
+              : `${minutesUntilDelivery} min`
+
+            return (
+              <div key={order.id} className="rounded-lg border border-amber-300 bg-amber-50 p-4 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold text-amber-900">
+                      Pedido programado #{order.id.slice(-6).toUpperCase()}: faltan {remaining} para la entrega.
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      Entrega prevista para {formatDateTime(order.scheduledAt!)}. ¿Deseas comenzar a preparar el pedido?
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 sm:shrink-0">
+                    <Button
+                      size="sm"
+                      onClick={() => handleStatusChange(order.id, 'preparing')}
+                      isLoading={updateMut.isPending}
+                    >
+                      Iniciar preparación
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setCancelScheduledOrder(order)}
+                    >
+                      Cancelar pedido
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {expiredReminder && (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold text-red-900">
+                El pedido programado del cliente {expiredReminder.customerName ?? 'Cliente general'} pasó la fecha de entrega.
+              </p>
+              <p className="mt-1 text-xs text-red-800">
+                Entrega prevista: {formatDateTime(expiredReminder.scheduledAt!)}. ¿Desea cancelarlo?
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => setCancelScheduledOrder(expiredReminder)}
+              >
+                Sí, cancelar
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setExpiredReminder(null)}
+              >
+                No
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -517,6 +618,36 @@ export const KitchenPage: FC = () => {
             </Button>
             <Button variant="primary" size="lg" className="shadow-lg hover:shadow-xl transition-all px-8 font-bold" onClick={confirmDelivery} isLoading={deliverMut.isPending}>
               ✓ Confirmar entrega
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(cancelScheduledOrder)}
+        onClose={() => setCancelScheduledOrder(null)}
+        title="Cancelar pedido programado"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            ¿Está seguro o segura de que quiere cancelar el pedido programado #{cancelScheduledOrder?.id.slice(-6).toUpperCase()}?
+          </p>
+          <p className="text-xs text-gray-500">El stock reservado será restituido.</p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setCancelScheduledOrder(null)}>
+              No, volver
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                if (!cancelScheduledOrder) return
+                cancelMut.mutate(cancelScheduledOrder)
+                if (expiredReminder?.id === cancelScheduledOrder.id) setExpiredReminder(null)
+              }}
+              isLoading={cancelMut.isPending}
+            >
+              Sí, cancelar pedido
             </Button>
           </div>
         </div>

@@ -67,7 +67,8 @@ export function getElapsedMinutes(date: string | Date): number {
 export function getScheduledMin(): string {
   const now = new Date()
   now.setMinutes(now.getMinutes() + 30) // at least 30 min from now
-  return now.toISOString().slice(0, 16)
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
 }
 
 /** Validates that a scheduled datetime is within business hours (09:00–19:00) and in the future. */

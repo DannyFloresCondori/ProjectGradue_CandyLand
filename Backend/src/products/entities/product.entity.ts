@@ -34,7 +34,7 @@ export class Product {
   @Column({ type: 'int', default: 0 })
   minimum_stock!: number;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, })
+  @Column({ type: 'varchar', length: 255, nullable: false, })
   image?: string;
 
   @Column({ type: 'boolean', default: true })

@@ -9,9 +9,10 @@ function normalizeStockAlert(item: any): StockAlert {
     productName: item.product?.name ?? item.productName ?? '',
     currentStock: Number(item.current_stock ?? item.currentStock ?? 0),
     minStock: Number(item.minimum_stock ?? item.minStock ?? 0),
-    stockQuantity: Number(item.stock_quantity ?? item.stockQuantity ?? 0),
+    quantityIncreased: Number(item.quantity_increased ?? item.quantityIncreased ?? item.stock_quantity ?? item.stockQuantity ?? 0),
     isResolved: item.is_resolved ?? item.isResolved ?? false,
     alertedAt: item.alerted_at ?? item.alertedAt ?? new Date().toISOString(),
+    stockUpdatedAt: item.stock_updated_at ?? item.stockUpdatedAt ?? null,
     resolvedAt: item.resolved_at ?? item.resolvedAt ?? null,
     message: item.alert_message ?? item.message ?? '',
   }
@@ -72,11 +73,16 @@ export const inventoryService = {
     }
   },
 
-  async recordStockIncrease(id: string, stockQuantity: number, currentStock: number): Promise<StockAlert> {
+  async recordStockIncrease(id: string, quantityIncreased: number, resultingStock: number, minimumStock: number): Promise<StockAlert> {
     try {
+      const isResolved = resultingStock > minimumStock
+      const updatedAt = new Date().toISOString()
       const { data } = await apiClient.patch(`/stock-alert/${id}`, {
-        stock_quantity: stockQuantity,
-        current_stock: currentStock,
+        quantity_increased: quantityIncreased,
+        minimum_stock: minimumStock,
+        is_resolved: isResolved,
+        resolved_at: updatedAt,
+        stock_updated_at: updatedAt,
       })
       return normalizeStockAlert(data)
     } catch (error) {

@@ -54,6 +54,13 @@ export class OrdersService {
     private readonly stockAlertRepository: Repository<StockAlert>,
   ) {}
 
+  private formatOrderTimestamp(value: Date | null | undefined): string | null {
+    if (!value) return null;
+
+    const pad = (part: number) => String(part).padStart(2, '0');
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
+  }
+
   // ─────────────────────────────────────────────
   // 🎯 HELPER: Aplica promoción si existe y está vigente
   // Para agregar un nuevo tipo → añade un if nuevo aquí
@@ -65,8 +72,13 @@ export class OrdersService {
   ): { finalPrice: number; discountApplied: number; subtotal: number } {
     const now = new Date();
 
-    // Sin promoción, inactiva o vencida → precio normal
-    if (!promotion || !promotion.is_active || new Date(promotion.end_date) < now) {
+    // Sin promoción, inactiva, aún no iniciada o vencida → precio normal
+    if (
+      !promotion ||
+      !promotion.is_active ||
+      (promotion.start_date && new Date(promotion.start_date) > now) ||
+      new Date(promotion.end_date) < now
+    ) {
       return {
         finalPrice: price,
         discountApplied: 0,
@@ -436,7 +448,7 @@ export class OrdersService {
         subtotal: detail.subtotal,
         toppings: detail.toppings ?? [],
       })),
-      createdAt: order.createdAt,
+      createdAt: this.formatOrderTimestamp(order.createdAt),
     }));
   }
 
@@ -486,7 +498,7 @@ export class OrdersService {
         subtotal: detail.subtotal,
         toppings: detail.toppings ?? [],
       })),
-      createdAt: order.createdAt,
+      createdAt: this.formatOrderTimestamp(order.createdAt),
     };
   }
 
@@ -669,7 +681,9 @@ export class OrdersService {
       order.total = total;
     }
 
-    return await this.orderRepository.save(order);
+    const savedOrder = await this.orderRepository.save(order);
+    this.ordersGateway.notifyOrderUpdated({ id: savedOrder.id, status: savedOrder.status });
+    return savedOrder;
   }
 
   // ─────────────────────────────────────────────
@@ -694,7 +708,8 @@ export class OrdersService {
     }
 
     order.status = OrderStatus.CANCELLED;
-    await this.orderRepository.save(order);
+    const savedOrder = await this.orderRepository.save(order);
+    this.ordersGateway.notifyOrderUpdated({ id: savedOrder.id, status: savedOrder.status });
 
     return { message: 'Pedido cancelado correctamente' };
   }

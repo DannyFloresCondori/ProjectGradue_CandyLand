@@ -7,7 +7,10 @@ interface PromotionBadgeProps {
 }
 
 export const PromotionBadge: FC<PromotionBadgeProps> = ({ promotion, compact = false }) => {
-  if (!promotion?.isActive) return null
+  const today = new Date().toISOString().slice(0, 10)
+  const hasStarted = !promotion?.startDate || promotion.startDate.slice(0, 10) <= today
+  const hasNotExpired = !promotion?.endDate || promotion.endDate.slice(0, 10) >= today
+  if (!promotion?.isActive || !hasStarted || !hasNotExpired) return null
 
   const discountPercent = Number(promotion.discountPercent ?? 0)
   const benefit = promotion.type === 'buy_one_get_one'

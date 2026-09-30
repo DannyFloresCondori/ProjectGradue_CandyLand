@@ -26,4 +26,8 @@ export class OrdersGateway {
   notifyOrderCreated(order: { id: string }) {
     this.server.to('kitchen').emit('order.created', { orderId: order.id });
   }
+
+  notifyOrderUpdated(order: { id: string; status: string }) {
+    this.server.emit('order.updated', { orderId: order.id, status: order.status });
+  }
 }

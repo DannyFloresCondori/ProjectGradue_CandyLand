@@ -17,6 +17,7 @@ export class CreateUserDto {
   @IsString()
   @IsNotEmpty({ message: 'El nombre del usuario es obligatorio'})
   @Length(2, 20)
+  @Matches(/^[\p{L}][\p{L}\s.'-]*$/u, { message: 'El nombre solo puede contener letras' })
   name!: string;
 
   @IsString()
@@ -33,7 +34,7 @@ export class CreateUserDto {
   @IsOptional()
   @ValidateIf((o) => !o.email)
   @IsString({ message: 'El teléfono debe ser un texto' })
-  @Matches(/^\+?[0-9\s\-()]{7,15}$/, { message: 'El número de teléfono no es válido' })
+  @Matches(/^\d{7,15}$/, { message: 'El teléfono debe contener únicamente números' })
   phone?: string;
 
   @IsOptional()

@@ -65,12 +65,13 @@ export const customerService = {
 
   async update(id: string, input: Partial<CustomerInput>): Promise<Customer> {
     try {
-      const { data } = await apiClient.patch(`/client/${id}`, {
-        full_name: input.fullName,
-        ci: input.ci,
-        phone: input.phone,
-        direction: input.address,
-      })
+      const payload: Record<string, unknown> = {}
+      if (input.fullName !== undefined) payload.full_name = input.fullName
+      if (input.ci !== undefined) payload.ci = input.ci
+      if (input.phone !== undefined) payload.phone = input.phone
+      if (input.address !== undefined) payload.direction = input.address
+
+      const { data } = await apiClient.patch(`/client/${id}`, payload)
       return normalizeCustomer(data)
     } catch (error) {
       throw new Error(getErrorMessage(error))

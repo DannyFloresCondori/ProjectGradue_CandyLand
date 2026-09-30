@@ -33,6 +33,7 @@ import {
   getScheduledMin,
 } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
+import { formatStockReturnMessage } from "@/lib/stockMessage";
 import {
   PlusIcon,
   XMarkIcon,
@@ -93,7 +94,7 @@ interface CartItem {
 
 const OrderDetailView: FC<{ order: Order; products: Product[] }> = ({ order, products }) => (
   <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-4 text-sm">
+    <div className="grid grid-cols-1 gap-3 rounded-lg bg-gray-50 p-4 text-sm sm:grid-cols-2">
       <div>
         <p className="text-xs text-gray-500">Estado</p>
         <Badge variant={STATUS_MAP[order.status].variant} className="mt-1">
@@ -164,21 +165,26 @@ const OrderDetailView: FC<{ order: Order; products: Product[] }> = ({ order, pro
         {order.details.map((d) => (
           <li
             key={d.id}
-            className="flex items-center justify-between py-2 text-sm"
+            className="flex items-start justify-between gap-3 py-2 text-sm"
           >
-            <div>
+            <div className="min-w-0 flex-1">
               <span className="font-bold text-primary-600 mr-2">
                 {d.quantity}×
               </span>
-              <span className="font-medium">{d.productName}</span>
+              <span className="wrap-break-word font-medium">{d.productName}</span>
               <PromotionBadge promotion={products.find((product) => product.id === d.productId)?.promotion} compact />
               {d.toppings.length > 0 && (
                 <span className="text-xs text-gray-500 ml-1">
                   + {d.toppings.map((t) => t.toppingName).join(", ")}
                 </span>
               )}
+              {Number(d.discountApplied ?? 0) > 0 && (
+                <div className="mt-1 text-[11px] text-pink-600">
+                  Desc. {Number(d.discountApplied ?? 0)}%{d.promotionName ? ` · ${d.promotionName}` : ''}
+                </div>
+              )}
             </div>
-            <span className="font-semibold">{formatCurrency(d.subtotal)}</span>
+            <span className="shrink-0 font-semibold">{formatCurrency(d.subtotal)}</span>
           </li>
         ))}
       </ul>
@@ -225,7 +231,9 @@ export const OrdersPage: FC = () => {
   const [editOrderType, setEditOrderType] = useState<OrderType>("delivery");
   const [editSelectedCustomer, setEditSelectedCustomer] =
     useState<Customer | null>(null);
-  const [editIsGeneralClient, setEditIsGeneralClient] = useState(false);
+  const [editCustomerName, setEditCustomerName] = useState("");
+  const [editCustomerPhone, setEditCustomerPhone] = useState("");
+  const [editCustomerDataOpen, setEditCustomerDataOpen] = useState(false);
   const [editAddress, setEditAddress] = useState("");
   const [editScheduledAt, setEditScheduledAt] = useState("");
   const [editScheduledError, setEditScheduledError] = useState<string | null>(
@@ -350,10 +358,13 @@ export const OrdersPage: FC = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["kitchen-orders"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["products-active"] });
       qc.invalidateQueries({ queryKey: ['pending-orders'] });
       qc.invalidateQueries({ queryKey: ['dashboard-metrics'] });
       qc.invalidateQueries({ queryKey: ['alerts'] });
+      qc.invalidateQueries({ queryKey: ['active-alerts'] });
+      qc.invalidateQueries({ queryKey: ['low-stock'] });
       toast.success("Pedido registrado");
       closeNewModal();
     },
@@ -366,8 +377,12 @@ export const OrdersPage: FC = () => {
     onSuccess: (_, { status }) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["kitchen-orders"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["products-active"] });
       qc.invalidateQueries({ queryKey: ['pending-orders'] });
       qc.invalidateQueries({ queryKey: ['alerts'] });
+      qc.invalidateQueries({ queryKey: ['active-alerts'] });
+      qc.invalidateQueries({ queryKey: ['low-stock'] });
       toast.success(
         status === "delivered" ? "Pedido entregado" : "Estado actualizado",
       );
@@ -376,30 +391,50 @@ export const OrdersPage: FC = () => {
   });
 
   const cancelMut = useMutation({
-    mutationFn: ({ id }: { id: string }) => orderService.cancel(id),
-    onSuccess: () => {
+    mutationFn: ({ order }: { order: Order }) => orderService.cancel(order.id),
+    onSuccess: (_, { order }) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["kitchen-orders"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["products-active"] });
       qc.invalidateQueries({ queryKey: ['pending-orders'] });
       qc.invalidateQueries({ queryKey: ['dashboard-metrics'] });
       qc.invalidateQueries({ queryKey: ['alerts'] });
-      toast.success("Pedido cancelado. Stock restituido.");
+      qc.invalidateQueries({ queryKey: ['active-alerts'] });
+      qc.invalidateQueries({ queryKey: ['low-stock'] });
+      toast.success(formatStockReturnMessage(order.details));
       setPreCancel(null);
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const editMut = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!editOrder) throw new Error("Pedido no disponible");
       const err =
         editOrderType === "scheduled"
           ? validateScheduledAt(editScheduledAt)
           : null;
       if (err) throw new Error(err);
+
+      const customerId = editSelectedCustomer?.id ?? editOrder.customerId ?? null;
+      if (editSelectedCustomer && editCustomerDataOpen) {
+        const phone = editCustomerPhone.trim();
+        if (!/^[\p{L}][\p{L}\s.'-]*$/u.test(editCustomerName.trim())) {
+          throw new Error("El nombre solo puede contener letras.");
+        }
+        if (phone && !/^[67]\d{7}$/.test(phone)) {
+          throw new Error("Ingrese un número de teléfono boliviano válido de 8 dígitos.");
+        }
+
+        await customerService.update(editSelectedCustomer.id, {
+          fullName: editCustomerName.trim(),
+          phone,
+        });
+      }
+
       return orderService.update(editOrder.id, {
-        customerId: editSelectedCustomer?.id ?? null,
+        customerId,
         orderType: editOrderType,
         deliveryAddress: editAddress.trim() || null,
         scheduledAt: editScheduledAt || null,
@@ -414,15 +449,22 @@ export const OrdersPage: FC = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["kitchen-orders"] });
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      qc.invalidateQueries({ queryKey: ["customers-active"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["products-active"] });
       qc.invalidateQueries({ queryKey: ['pending-orders'] });
       qc.invalidateQueries({ queryKey: ['alerts'] });
+      qc.invalidateQueries({ queryKey: ['active-alerts'] });
+      qc.invalidateQueries({ queryKey: ['low-stock'] });
       toast.success("Pedido editado");
       setEditOrder(null);
       setEditCart([]);
       setEditOrderType("delivery");
       setEditSelectedCustomer(null);
-      setEditIsGeneralClient(false);
+      setEditCustomerName("");
+      setEditCustomerPhone("");
+      setEditCustomerDataOpen(false);
       setEditAddress("");
       setEditScheduledAt("");
       setEditScheduledError(null);
@@ -562,12 +604,21 @@ export const OrdersPage: FC = () => {
       })),
     );
     setEditOrderType(order.orderType);
-    setEditSelectedCustomer(
-      order.customerId
-        ? (customers.find((c) => c.id === order.customerId) ?? null)
-        : null,
-    );
-    setEditIsGeneralClient(!order.customerId);
+    const customer = order.customerId
+      ? (customers.find((c) => c.id === order.customerId) ?? {
+          id: order.customerId,
+          ci: "",
+          fullName: order.customerName ?? "",
+          phone: order.customerPhone ?? "",
+          address: "",
+          isActive: true,
+          createdAt: order.createdAt,
+        })
+      : null;
+    setEditSelectedCustomer(customer);
+    setEditCustomerName(customer?.fullName ?? order.customerName ?? "");
+    setEditCustomerPhone(customer?.phone ?? order.customerPhone ?? "");
+    setEditCustomerDataOpen(false);
     setEditAddress(order.deliveryAddress ?? "");
     setEditScheduledAt(formatDateTimeInput(order.scheduledAt));
     setEditScheduledError(null);
@@ -580,7 +631,9 @@ export const OrdersPage: FC = () => {
     setEditCart([]);
     setEditOrderType("delivery");
     setEditSelectedCustomer(null);
-    setEditIsGeneralClient(false);
+    setEditCustomerName("");
+    setEditCustomerPhone("");
+    setEditCustomerDataOpen(false);
     setEditAddress("");
     setEditScheduledAt("");
     setEditScheduledError(null);
@@ -709,7 +762,7 @@ export const OrdersPage: FC = () => {
   return (
     <div className="space-y-4">
       {/* ─── Header ────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-semibold">Pedidos</h1>
         <Button
           onClick={() => {
@@ -724,8 +777,8 @@ export const OrdersPage: FC = () => {
       </div>
 
       {/* ─── Filters ───────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex gap-1.5 flex-wrap">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
           {[
             { key: "active", label: "Activos" },
             { key: "pending", label: "Pendientes" },
@@ -761,7 +814,7 @@ export const OrdersPage: FC = () => {
             </button>
           ))}
         </div>
-        <div className="ml-auto w-56">
+        <div className="w-full sm:ml-auto sm:w-56">
           <Input
             placeholder="Buscar # o cliente..."
             value={search}
@@ -773,7 +826,7 @@ export const OrdersPage: FC = () => {
 
       {/* ─── Table ─────────────────────────────────────────────────────────── */}
       {filtered.length === 0 ? (
-        <EmptyState
+          <EmptyState
           icon={<ClipboardDocumentListIcon className="h-10 w-10" />}
           title="No hay pedidos"
           description={
@@ -791,7 +844,8 @@ export const OrdersPage: FC = () => {
       ) : (
         <Card>
           <CardBody className="p-0">
-            <table className="w-full text-sm">
+            <div className="w-full overflow-x-auto">
+            <table className="min-w-180 w-full text-sm">
               <thead className="border-b border-gray-100 bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">
@@ -899,6 +953,7 @@ export const OrdersPage: FC = () => {
                 })}
               </tbody>
             </table>
+            </div>
           </CardBody>
         </Card>
       )}
@@ -943,7 +998,7 @@ export const OrdersPage: FC = () => {
         }
         size="2xl"
       >
-        <div className="flex h-[82vh] max-h-[90vh] gap-0 -mx-5 -mb-5 overflow-hidden">
+        <div className="flex h-[82vh] max-h-[90vh] min-w-0 flex-col gap-0 -mx-4 -mb-4 overflow-hidden sm:-mx-5 sm:-mb-5 md:flex-row">
           {/* LEFT — Product catalog (shared component) */}
           <ProductCatalog
             products={catalogProducts}
@@ -952,7 +1007,7 @@ export const OrdersPage: FC = () => {
           />
 
           {/* RIGHT — Order configuration */}
-          <div className="flex w-[42%] flex-col min-h-0">
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col md:w-[42%] md:flex-none">
             {/* Details section with independent scroll */}
             <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="border-b border-gray-100 px-4 py-3 space-y-2">
@@ -1199,13 +1254,13 @@ export const OrdersPage: FC = () => {
         size="2xl"
       >
         {editOrder && (
-          <div className="flex h-[82vh] max-h-[90vh] gap-0 -mx-5 -mb-5 overflow-hidden">
+          <div className="flex h-[82vh] max-h-[90vh] min-w-0 flex-col gap-0 -mx-4 -mb-4 overflow-hidden sm:-mx-5 sm:-mb-5 md:flex-row">
             <ProductCatalog
               products={catalogProducts}
               categories={categories}
               onAddProduct={editAddToCart}
             />
-            <div className="flex w-[42%] flex-col min-h-0">
+            <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col md:w-[42%] md:flex-none">
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <div className="border-b border-gray-100 px-4 py-3 space-y-2">
                   <div className="flex flex-wrap gap-1.5">
@@ -1239,46 +1294,63 @@ export const OrdersPage: FC = () => {
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                     Cliente
                   </p>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                    Cliente
-                  </p>
-                  {editSelectedCustomer ? (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-                      <p className="font-medium text-gray-800">
-                        {editSelectedCustomer.fullName}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {editSelectedCustomer.phone || "Sin teléfono"}
-                      </p>
-                    </div>
-                  ) : (
-                    !editIsGeneralClient && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditIsGeneralClient(true);
-                          setEditSelectedCustomer(null);
-                        }}
-                        className="cursor-pointer w-full rounded-lg border px-3 py-2 text-left text-sm border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:bg-gray-50"
-                      >
-                        Cliente General (sin registro)
-                      </button>
-                    )
-                  )}
-                  {!editIsGeneralClient && (
-                    <CustomerSearch
-                      customers={customers}
-                      selected={editSelectedCustomer}
-                      onSelect={(c) => {
-                        setEditSelectedCustomer(c);
-                        if (c) setEditIsGeneralClient(false);
-                      }}
-                      onQuickRegister={(pf = "") => {
-                        setQuickPrefill(pf);
-                        setQuickCustomerOpen(true);
-                      }}
-                    />
-                  )}
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 space-y-2">
+                    {editCustomerDataOpen ? (
+                      <>
+                        <div>
+                          <label className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                            Nombre del cliente
+                          </label>
+                          <input
+                            type="text"
+                            value={editCustomerName}
+                            onChange={(e) => setEditCustomerName(e.target.value)}
+                            className="mt-1 h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                            Teléfono
+                          </label>
+                          <input
+                            type="tel"
+                            value={editCustomerPhone}
+                            onChange={(e) => setEditCustomerPhone(e.target.value)}
+                            placeholder="Ej: 71234567"
+                            className="mt-1 h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditCustomerName(editSelectedCustomer?.fullName ?? "");
+                            setEditCustomerPhone(editSelectedCustomer?.phone ?? "");
+                            setEditCustomerDataOpen(false);
+                          }}
+                          className=" cursor-pointer text-xs font-medium text-gray-600 hover:text-gray-900"
+                        >
+                          Mantener datos del cliente
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-gray-800">
+                          {editCustomerName || "Sin datos de cliente"}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {editCustomerPhone || "Sin teléfono"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setEditCustomerDataOpen(true)}
+                          disabled={!editSelectedCustomer}
+                          className="cursor-pointer text-xs font-medium text-primary-600 hover:text-primary-700 disabled:cursor-not-allowed disabled:text-gray-400"
+                        >
+                          Cambiar datos del cliente
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
                 {(editNeedsAddress || editNeedsDate) && (
                   <div className="border-b border-gray-100 px-4 py-3 space-y-2">
@@ -1425,7 +1497,6 @@ export const OrdersPage: FC = () => {
                   isLoading={editMut.isPending}
                   disabled={
                     editCart.length === 0 ||
-                    (!editSelectedCustomer && !editIsGeneralClient) ||
                     (editNeedsDate &&
                       (!editScheduledAt || !!editScheduledError)) ||
                     (editNeedsAddress && !editAddress.trim())
@@ -1481,7 +1552,7 @@ export const OrdersPage: FC = () => {
                 variant="primary"
                 onClick={() => {
                   if (!preCancel) return;
-                  cancelMut.mutate({ id: preCancel.id });
+                  cancelMut.mutate({ order: preCancel });
                 }}
               >
                 Confirmar

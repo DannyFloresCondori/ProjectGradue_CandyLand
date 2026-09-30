@@ -117,13 +117,26 @@ export class StockAlertService {
       alert.stock_quantity = updateStockAlertDto.stock_quantity;
     }
 
+    if (updateStockAlertDto.quantity_increased !== undefined) {
+      alert.quantity_increased = updateStockAlertDto.quantity_increased;
+    }
+
+    if (updateStockAlertDto.stock_updated_at !== undefined) {
+      alert.stock_updated_at = updateStockAlertDto.stock_updated_at
+        ? new Date(updateStockAlertDto.stock_updated_at)
+        : null;
+    }
+
     if (updateStockAlertDto.is_resolved !== undefined) {
       alert.is_resolved = updateStockAlertDto.is_resolved;
-      if (updateStockAlertDto.is_resolved) {
-        alert.resolved_at = updateStockAlertDto.resolved_at ?? new Date();
-      } else {
-        alert.resolved_at = null;
-      }
+    }
+
+    if (updateStockAlertDto.resolved_at !== undefined) {
+      alert.resolved_at = updateStockAlertDto.resolved_at
+        ? new Date(updateStockAlertDto.resolved_at)
+        : null;
+    } else if (updateStockAlertDto.is_resolved) {
+      alert.resolved_at = new Date();
     }
 
     if (updateStockAlertDto.alert_message !== undefined) {

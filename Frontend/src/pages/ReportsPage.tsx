@@ -126,8 +126,8 @@ export const ReportsPage: FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between w-full">
-        <div className="flex items-center gap-4">
+      <div className="flex w-full flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 sm:gap-4">
           <img src={LogoImg} alt="Logo" className="h-12 w-12 object-contain" />
           <div>
             <h1 className="text-lg font-semibold">Reportes de ventas</h1>
@@ -135,7 +135,7 @@ export const ReportsPage: FC = () => {
           </div>
         </div>
       </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between w-full">
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-600">Desde</label>
@@ -194,7 +194,7 @@ export const ReportsPage: FC = () => {
       {isLoading && <PageSpinner />}
       {!isLoading && data && (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <StatCard title="Ventas completadas" value={data.totalSales} icon={<ShoppingCartIcon className="h-5 w-5" />} />
             <StatCard title="Ingresos totales" value={formatCurrency(data.totalRevenue)} icon={<CurrencyDollarIcon className="h-5 w-5" />} iconBg="bg-emerald-50" />
             <div role="button" tabIndex={0} onClick={() => setShowCancelled(true)} onKeyDown={(e) => { if (e.key === 'Enter') setShowCancelled(true) }} className="cursor-pointer hover:shadow-md transition-shadow">
@@ -249,31 +249,31 @@ export const ReportsPage: FC = () => {
           </div>
 
           {/* Cancelled sales modal */}
-          <Modal isOpen={showCancelled} onClose={() => { setShowCancelled(false); setSelectedSaleId(null) }} title={`Ventas anuladas (${data.cancelledSales})`} size="xl">
+          <Modal isOpen={showCancelled} onClose={() => { setShowCancelled(false); setSelectedSaleId(null) }} title={`Ventas anuladas (${data.cancelledSales})`} size="2xl">
             {loadingCancelled ? (
               <PageSpinner />
             ) : (
-              <div>
-                <table className="w-full text-sm">
+              <div className="w-full min-w-0">
+                <table className="w-full table-fixed text-xs sm:text-sm">
                   <thead className="border-b border-gray-100 bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left font-medium text-gray-600">Venta</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-600">Fecha</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-600">Cliente</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-600">Total</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-600">Razón</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-600">Acciones</th>
+                      <th className="w-[12%] px-2 py-3 text-left font-medium text-gray-600 sm:px-4">Venta</th>
+                      <th className="w-[14%] px-2 py-3 text-left font-medium text-gray-600 sm:px-4">Fecha</th>
+                      <th className="w-[19%] px-2 py-3 text-left font-medium text-gray-600 sm:px-4">Cliente</th>
+                      <th className="w-[13%] px-2 py-3 text-left font-medium text-gray-600 sm:px-4">Total</th>
+                      <th className="w-[24%] px-2 py-3 text-left font-medium text-gray-600 sm:px-4">Razón</th>
+                      <th className="w-[18%] px-2 py-3 text-right font-medium text-gray-600 sm:px-4">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {(cancelledList ?? []).map((s) => (
                       <tr key={s.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-mono text-xs">#{s.id.slice(-6).toUpperCase()}</td>
-                        <td className="px-4 py-3 text-xs text-gray-600">{formatDate(new Date(s.createdAt))}</td>
-                        <td className="px-4 py-3 text-gray-600">{s.customerName ?? 'General'}</td>
-                        <td className="px-4 py-3 font-semibold text-primary-600">{formatCurrency(s.total)}</td>
-                        <td className="px-4 py-3 text-sm text-red-600">{s.cancellationReason ?? '—'}</td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="wrap-break-word px-2 py-3 font-mono text-[11px] sm:px-4 sm:text-xs">#{s.id.slice(-6).toUpperCase()}</td>
+                        <td className="wrap-break-word px-2 py-3 text-[11px] text-gray-600 sm:px-4 sm:text-xs">{formatDate(new Date(s.createdAt))}</td>
+                        <td className="wrap-break-word px-2 py-3 text-gray-600 sm:px-4">{s.customerName ?? 'General'}</td>
+                        <td className="wrap-break-word px-2 py-3 font-semibold text-primary-600 sm:px-4">{formatCurrency(s.total)}</td>
+                        <td className="wrap-break-word px-2 py-3 text-red-600 sm:px-4">{s.cancellationReason ?? '—'}</td>
+                        <td className="px-2 py-3 text-right sm:px-4">
                           <div className="flex justify-end gap-2">
                             <Button variant="ghost" size="sm" onClick={() => setSelectedSaleId(s.id)}>Ver detalles</Button>
                           </div>
@@ -295,7 +295,7 @@ export const ReportsPage: FC = () => {
               <PageSpinner />
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-4 text-sm">
+                <div className="grid grid-cols-1 gap-3 rounded-lg bg-gray-50 p-4 text-sm sm:grid-cols-2">
                   <div>
                     <p className="text-xs text-gray-500">Estado</p>
                     <p className="font-medium text-red-700">Anulada</p>
@@ -315,7 +315,8 @@ export const ReportsPage: FC = () => {
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Productos</p>
-                  <table className="w-full text-sm">
+                  <div className="w-full overflow-x-auto">
+                  <table className="min-w-90 w-full text-sm">
                     <thead>
                       <tr className="text-gray-500">
                         <th className="text-left pb-1">Producto</th>
@@ -333,6 +334,7 @@ export const ReportsPage: FC = () => {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
                 <div className="flex justify-between border-t border-gray-200 pt-2 mt-2 font-bold">
                   <span>Total</span>
@@ -345,8 +347,8 @@ export const ReportsPage: FC = () => {
           {/* Top products */}
           <Card>
             <CardHeader><h3 className="text-sm font-medium">Productos más vendidos</h3></CardHeader>
-            <CardBody className="p-0">
-              <table className="w-full text-sm">
+            <CardBody className="overflow-x-auto p-0">
+              <table className="min-w-130 w-full text-sm">
                 <thead className="border-b border-gray-100 bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-gray-600">Producto</th>

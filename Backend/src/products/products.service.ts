@@ -261,6 +261,10 @@ export class ProductsService {
     if (!allowedMimeTypes.includes(file.mimetype)) {
       throw new BadRequestException('Formato de imagen no permitido. Usa PNG, JPG, JPEG, WEBP o GIF');
     }
+    const maxImageSize = 5 * 1024 * 1024;
+    if (file.size > maxImageSize) {
+      throw new BadRequestException('La imagen no puede superar los 5 MB');
+    }
 
     const product = await this.productRepository.findOneBy({ id, isActive: true });
     if (!product) {

@@ -7,6 +7,7 @@ import {
   CubeIcon, TagIcon, UsersIcon, TicketIcon,
   ChartBarIcon, SquaresPlusIcon, UserGroupIcon,
   ChevronLeftIcon, ChevronRightIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import type { FC } from 'react'
 import LogoImg from '@/assets/Logo.jpeg'
@@ -44,7 +45,7 @@ function isKitchenRole(role?: string): boolean {
 }
 
 export const Sidebar: FC = () => {
-  const { sidebarCollapsed, toggleSidebar } = useUIStore()
+  const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUIStore()
   const { user } = useAuthStore()
 
   const visible = nav.filter(item => {
@@ -55,12 +56,14 @@ export const Sidebar: FC = () => {
   })
 
   return (
-    <aside
-      className={cn(
-        'relative flex flex-col bg-gray-900 text-white transition-all duration-200',
-        sidebarCollapsed ? 'w-16' : 'w-60'
-      )}
-    >
+    <>
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 flex w-60 flex-col bg-gray-900 text-white transition-transform duration-200 md:relative md:z-auto md:translate-x-0 md:transition-[width]',
+          mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          sidebarCollapsed ? 'md:w-16' : 'md:w-60'
+        )}
+      >
       {/* Logo */}
       <div className="flex h-14 items-center border-b border-gray-800 px-4">
         <div className="flex items-center gap-2 overflow-hidden">
@@ -73,6 +76,14 @@ export const Sidebar: FC = () => {
             </span>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => setMobileSidebarOpen(false)}
+          className="ml-auto rounded-md p-2 text-gray-400 hover:bg-gray-800 hover:text-white md:hidden"
+          aria-label="Cerrar menú"
+        >
+          <XMarkIcon className="h-5 w-5" />
+        </button>
       </div>
 
       {/* Nav */}
@@ -83,6 +94,7 @@ export const Sidebar: FC = () => {
               <NavLink
                 to={item.to}
                 title={item.label}
+                onClick={() => setMobileSidebarOpen(false)}
                 className={({ isActive }) => cn(
                   'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
                   isActive
@@ -111,6 +123,15 @@ export const Sidebar: FC = () => {
           }
         </button>
       </div>
-    </aside>
+      </aside>
+      {mobileSidebarOpen && (
+        <button
+          type="button"
+          aria-label="Cerrar menú"
+          onClick={() => setMobileSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+        />
+      )}
+    </>
   )
 }

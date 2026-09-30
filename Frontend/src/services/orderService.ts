@@ -1,7 +1,13 @@
 import type { Order, OrderInput, OrderStatus } from '@/types'
 import { apiClient, getErrorMessage } from '@/lib/api'
 
-function normalizeOrder(item: any): Order {
+function normalizeScheduledAt(value: string | null): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toISOString()
+}
+
+export function normalizeOrder(item: any): Order {
   const type = item.type ?? item.order_type ?? item.orderType ?? 'delivery'
   const customerName = item.client?.full_name ?? item.client?.fullName ?? item.customerName ?? item.customer?.full_name ?? item.customer?.fullName ?? null
   const customerPhone = item.client?.phone ?? item.customerPhone ?? item.customer?.phone ?? null
@@ -33,6 +39,9 @@ function normalizeOrder(item: any): Order {
       productName: detail.product?.name ?? detail.productName ?? detail.name ?? '',
       quantity: Number(detail.quantity ?? 0),
       unitPrice: Number(detail.price_unique ?? detail.priceUnique ?? detail.unitPrice ?? 0),
+      finalPrice: Number(detail.finalPrice ?? detail.final_price ?? detail.unitPrice ?? 0),
+      discountApplied: Number(detail.discountApplied ?? detail.discount_applied ?? 0),
+      promotionName: detail.product?.promotion?.name ?? detail.promotion?.name ?? null,
       subtotal: Number(detail.subtotal ?? detail.price_unique ?? detail.priceUnique ?? 0),
       toppings: Array.isArray(detail.toppings) ? detail.toppings.map((t: any) => ({
         toppingId: t.topping?.id ?? t.toppingId ?? t.id ?? '',
@@ -81,8 +90,8 @@ export const orderService = {
         programed: input.orderType === 'scheduled',
         deliveryAddress: input.deliveryAddress,
         delivery_address: input.deliveryAddress,
-        scheduledAt: input.scheduledAt,
-        scheduled_at: input.scheduledAt,
+        scheduledAt: normalizeScheduledAt(input.scheduledAt),
+        scheduled_at: normalizeScheduledAt(input.scheduledAt),
         notes: input.notes,
         details: input.details.map((d) => ({
           productId: d.productId,
@@ -100,23 +109,15 @@ export const orderService = {
 
   async update(id: string, input: OrderInput): Promise<Order> {
     try {
-      const customer = input.customerId ? {
-        id: input.customerId,
-        full_name: undefined,
-        phone: undefined,
-        direction: input.deliveryAddress ?? undefined,
-      } : undefined
-
       const payload = {
-        client: customer,
         type: input.orderType,
         orderType: input.orderType,
         order_type: input.orderType,
         programed: input.orderType === 'scheduled',
         deliveryAddress: input.deliveryAddress,
         delivery_address: input.deliveryAddress,
-        scheduledAt: input.scheduledAt,
-        scheduled_at: input.scheduledAt,
+        scheduledAt: normalizeScheduledAt(input.scheduledAt),
+        scheduled_at: normalizeScheduledAt(input.scheduledAt),
         notes: input.notes,
         details: input.details.map((d) => ({
           productId: d.productId,
