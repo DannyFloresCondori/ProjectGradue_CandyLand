@@ -700,11 +700,11 @@ export class OrdersService {
       throw new BadRequestException('El pedido ya está cancelado');
     }
 
-    // Restaurar stock
+    // Restaurar stock con incrementos atómicos y releer el producto para la alerta
     for (const detail of order.details) {
-      detail.product.current_stock += detail.quantity;
-      await this.productRepository.save(detail.product);
-      await this.syncStockAlert(detail.product);
+      await this.productRepository.increment({ id: detail.product.id }, 'current_stock', detail.quantity);
+      const refreshed = await this.productRepository.findOne({ where: { id: detail.product.id } });
+      if (refreshed) await this.syncStockAlert(refreshed);
     }
 
     order.status = OrderStatus.CANCELLED;

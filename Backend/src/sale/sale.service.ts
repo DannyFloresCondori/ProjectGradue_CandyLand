@@ -566,11 +566,13 @@ export class SaleService {
         throw new BadRequestException('La razón de cancelación es obligatoria');
       }
 
+      // La reposición se hace con un incremento atómico en la base de datos; luego se
+      // relee el producto para sincronizar su alerta con el stock real (evita perder
+      // reposiciones cuando un mismo producto aparece en varias líneas de la venta).
       for (const detail of sale.saleDetail) {
         await this.restoreStock(detail.product, detail.quantity, queryRunner.manager);
-        detail.product.current_stock += detail.quantity;
-        await queryRunner.manager.save(Product, detail.product);
-        await this.syncStockAlert(detail.product, queryRunner.manager);
+        const refreshed = await queryRunner.manager.findOne(Product, { where: { id: detail.product.id } });
+        if (refreshed) await this.syncStockAlert(refreshed, queryRunner.manager);
       }
 
       sale.status = SalesStatus.CANCELED;

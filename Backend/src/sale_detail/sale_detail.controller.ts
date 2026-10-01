@@ -1,3 +1,4 @@
+import { AllowRoles } from '../auth/auth.decorators';
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { SaleDetailService } from './sale_detail.service';
 import { CreateSaleDetailDto } from './dto/create-sale_detail.dto';
@@ -7,6 +8,7 @@ import { UpdateSaleDetailDto } from './dto/update-sale_detail.dto';
 export class SaleDetailController {
   constructor(private readonly saleDetailService: SaleDetailService) {}
 
+  @AllowRoles('admin', 'staff')
   @Post()
   create(@Body() createSaleDetailDto: CreateSaleDetailDto) {
     return this.saleDetailService.create(createSaleDetailDto);
@@ -22,11 +24,13 @@ export class SaleDetailController {
     return this.saleDetailService.findOne(+id);
   }
 
+  @AllowRoles('admin', 'staff')
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateSaleDetailDto: UpdateSaleDetailDto) {
     return this.saleDetailService.update(+id, updateSaleDetailDto);
   }
 
+  @AllowRoles('admin', 'staff')
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.saleDetailService.remove(+id);

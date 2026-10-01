@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { formatCurrency, validateScheduledAt } from './utils'
 
 describe('formatCurrency', () => {
@@ -16,8 +16,32 @@ describe('validateScheduledAt', () => {
     expect(validateScheduledAt('')).toBe('La fecha y hora son requeridas para pedidos programados')
   })
 
-  it('rechaza horarios fuera del rango de atención', () => {
-    const tooLate = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16)
-    expect(validateScheduledAt(tooLate)).toBe('El horario máximo de entrega es las 19:00')
+  // Se fija la fecha del sistema para que el resultado no dependa de la hora de ejecución
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('rechaza horarios posteriores a las 19:00', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-01T10:00:00'))
+    expect(validateScheduledAt('2026-07-01T19:30')).toBe('El horario máximo de entrega es las 19:00')
+  })
+
+  it('rechaza horarios anteriores a las 09:00', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-01T10:00:00'))
+    expect(validateScheduledAt('2026-07-02T08:30')).toBe('El horario mínimo de entrega es las 09:00')
+  })
+
+  it('exige al menos 30 minutos de anticipación', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-01T10:00:00'))
+    expect(validateScheduledAt('2026-07-01T10:10')).toBe('El pedido debe programarse con al menos 30 minutos de anticipación')
+  })
+
+  it('acepta un horario válido dentro de la atención', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-01T10:00:00'))
+    expect(validateScheduledAt('2026-07-01T15:00')).toBeNull()
   })
 })

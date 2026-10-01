@@ -32,6 +32,26 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
+// Si el servidor rechaza el token (sesión expirada o no válida), se cierra la sesión local
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const isLogin = typeof error?.config?.url === 'string' && error.config.url.includes('/auth/login')
+    if (axios.isAxiosError(error) && error.response?.status === 401 && !isLogin) {
+      try {
+        localStorage.removeItem('candyland_session')
+        localStorage.removeItem('candyland-auth')
+      } catch {
+        // Ignorar errores de almacenamiento
+      }
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.assign('/login')
+      }
+    }
+    return Promise.reject(error)
+  },
+)
+
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as { message?: string; error?: string } | undefined

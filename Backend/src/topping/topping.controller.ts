@@ -1,3 +1,4 @@
+import { AllowRoles } from '../auth/auth.decorators';
 import { Controller, Get, Post, Body, Patch, Param, Delete, ParseUUIDPipe } from '@nestjs/common';
 import { ToppingService } from './topping.service';
 import { CreateToppingDto } from './dto/create-topping.dto';
@@ -7,6 +8,7 @@ import { UpdateToppingDto } from './dto/update-topping.dto';
 export class ToppingController {
   constructor(private readonly toppingService: ToppingService) {}
 
+  @AllowRoles('admin')
   @Post()
   create(@Body() createToppingDto: CreateToppingDto) {
     return this.toppingService.create(createToppingDto);
@@ -22,11 +24,13 @@ export class ToppingController {
     return this.toppingService.findOne(id);
   }
 
+  @AllowRoles('admin')
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() updateToppingDto: UpdateToppingDto) {
     return this.toppingService.update(id, updateToppingDto);
   }
 
+  @AllowRoles('admin')
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.toppingService.remove(id);

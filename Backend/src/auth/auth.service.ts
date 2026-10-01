@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
+import { JwtService } from "@nestjs/jwt";
 import { User } from "src/users/entities/user.entity";
 import { Repository } from "typeorm";
 import { LoginUserDto } from "./dto/login-dto";
@@ -12,6 +13,7 @@ export class AuthService {
     constructor(
         @InjectRepository(User)
         private readonly userRepository: Repository<User>,
+        private readonly jwtService: JwtService,
     ) { }
 
     async login(loginUserDto: LoginUserDto) {
@@ -32,6 +34,12 @@ export class AuthService {
     );
   }
 
+  if (!user.isActive) {
+    throw new UnauthorizedException(
+      'El usuario se encuentra desactivado',
+    );
+  }
+
   const validPassword = await bcrypt.compare(
     password,
     user.password,
@@ -47,7 +55,7 @@ export class AuthService {
 
   return {
     message: 'Inicio de sesión exitoso',
-    token: Buffer.from(`${user.id}:${Date.now()}`).toString('base64'),
+    token: await this.jwtService.signAsync({ sub: user.id, username: user.name, role: roleName }),
     user: {
       id: user.id,
       name: user.name,

@@ -1,3 +1,4 @@
+import { AllowRoles } from '../auth/auth.decorators';
 import {
   Controller,
   Get,
@@ -13,6 +14,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 
+@AllowRoles('admin')
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}

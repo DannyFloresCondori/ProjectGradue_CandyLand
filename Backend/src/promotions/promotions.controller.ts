@@ -1,3 +1,4 @@
+import { AllowRoles } from '../auth/auth.decorators';
 import { Controller, Get, Post, Body, Patch, Param, Delete, ParseUUIDPipe } from '@nestjs/common';
 import { PromotionsService } from './promotions.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
@@ -7,6 +8,7 @@ import { UpdatePromotionDto } from './dto/update-promotion.dto';
 export class PromotionsController {
   constructor(private readonly promotionsService: PromotionsService) {}
 
+  @AllowRoles('admin')
   @Post()
   create(@Body() createPromotionDto: CreatePromotionDto) {
     return this.promotionsService.create(createPromotionDto);
@@ -22,11 +24,13 @@ export class PromotionsController {
     return this.promotionsService.findOne(id);
   }
 
+  @AllowRoles('admin')
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() updatePromotionDto: UpdatePromotionDto) {
     return this.promotionsService.update(id, updatePromotionDto);
   }
 
+  @AllowRoles('admin')
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.promotionsService.remove(id);

@@ -1,3 +1,4 @@
+import { AllowRoles } from '../auth/auth.decorators';
 import { Controller, Get, Post, Body, Patch, Param, Delete, ParseUUIDPipe } from '@nestjs/common';
 import { StockAlertService } from './stock_alert.service';
 import { CreateStockAlertDto } from './dto/create-stock_alert.dto';
@@ -7,6 +8,7 @@ import { UpdateStockAlertDto } from './dto/update-stock_alert.dto';
 export class StockAlertController {
   constructor(private readonly stockAlertService: StockAlertService) {}
 
+  @AllowRoles('admin', 'staff')
   @Post()
   create(@Body() createStockAlertDto: CreateStockAlertDto) {
     return this.stockAlertService.create(createStockAlertDto);
@@ -27,11 +29,13 @@ export class StockAlertController {
     return this.stockAlertService.findOne(id);
   }
 
+  @AllowRoles('admin', 'staff')
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() updateStockAlertDto: UpdateStockAlertDto) {
     return this.stockAlertService.update(id, updateStockAlertDto);
   }
 
+  @AllowRoles('admin', 'staff')
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.stockAlertService.remove(id);

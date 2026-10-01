@@ -1,9 +1,13 @@
+import { roleGroupOf } from '../auth/auth.decorators';
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,7 +18,9 @@ import { Sale, SalesStatus } from 'src/sale/entities/sale.entity';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
-export class UsersService {
+export class UsersService implements OnModuleInit {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -22,14 +28,43 @@ export class UsersService {
     private readonly roleRepository: Repository<Role>,
     @InjectRepository(Sale)
     private readonly saleRepository: Repository<Sale>,
+    private readonly configService: ConfigService,
   ) {}
+
+  // Como la API exige autenticación, el primer administrador se crea al iniciar el
+  // servidor si la base no tiene usuarios y el .env define ADMIN_USERNAME y ADMIN_PASSWORD.
+  async onModuleInit() {
+    if ((await this.userRepository.count()) > 0) return;
+
+    const username = this.configService.get<string>('ADMIN_USERNAME');
+    const password = this.configService.get<string>('ADMIN_PASSWORD');
+    if (!username || !password) {
+      this.logger.warn('No hay usuarios registrados: defina ADMIN_USERNAME y ADMIN_PASSWORD en .env para crear el administrador inicial.');
+      return;
+    }
+
+    const adminRole = (await this.roleRepository.find()).find((role) => roleGroupOf(role.name) === 'admin');
+    if (!adminRole) {
+      this.logger.warn('No existe un rol de administrador para crear el usuario inicial.');
+      return;
+    }
+
+    await this.userRepository.save(
+      this.userRepository.create({
+        name: username,
+        password: await bcrypt.hash(password, 10),
+        role: adminRole,
+      }),
+    );
+    this.logger.log(`Administrador inicial "${username}" creado.`);
+  }
   async create(createUserDto: CreateUserDto) {
     const { roleId, password, ...date } = createUserDto;
 
     const role = await this.findRoleOrThrow(createUserDto.roleId);
 
     // Validar administrador único
-    if (role.name.toLowerCase() === 'Administrador' || role.name.toLowerCase() === 'admin') {
+    if (roleGroupOf(role.name) === 'admin') {
       const existingAdmin = await this.userRepository.findOne({
         where: {
           role: {

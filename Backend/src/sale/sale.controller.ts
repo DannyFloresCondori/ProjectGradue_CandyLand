@@ -1,3 +1,4 @@
+import { AllowRoles } from '../auth/auth.decorators';
 import {
   Controller,
   Get,
@@ -18,6 +19,7 @@ import type { Response } from 'express'; // 👈 import type
 export class SaleController {
   constructor(private readonly saleService: SaleService) {}
 
+  @AllowRoles('admin', 'staff')
   @Post()
   create(@Body() createSaleDto: CreateSaleDto) {
     return this.saleService.create(createSaleDto);
@@ -50,6 +52,7 @@ export class SaleController {
     res.end(pdfBuffer);
   }
 
+  @AllowRoles('admin', 'staff')
   @Patch(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -58,6 +61,7 @@ export class SaleController {
     return this.saleService.update(id, updateSaleDto);
   }
 
+  @AllowRoles('admin', 'staff')
   @Delete(':id')
   remove(
     @Param('id', ParseUUIDPipe) id: string,

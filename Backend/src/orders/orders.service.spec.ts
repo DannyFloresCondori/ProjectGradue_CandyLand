@@ -10,33 +10,40 @@ import { Topping } from '../topping/entities/topping.entity';
 import { Sale } from '../sale/entities/sale.entity';
 import { SaleDetail } from '../sale_detail/entities/sale_detail.entity';
 import { StockAlert } from '../stock_alert/entities/stock_alert.entity';
+import { OrdersGateway } from './orders.gateway';
 
 describe('OrdersService', () => {
   let service: OrdersService;
   let stockAlertRepository: any;
+  let orderRepository: any;
+  let productRepository: any;
 
   const createRepository = () => ({
     manager: { connection: { createQueryRunner: jest.fn() } },
     findOne: jest.fn(),
     create: jest.fn(),
-    save: jest.fn(),
+    save: jest.fn(async (value) => value),
+    increment: jest.fn(),
   });
 
   beforeEach(async () => {
     stockAlertRepository = createRepository();
+    orderRepository = createRepository();
+    productRepository = createRepository();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
-        { provide: getRepositoryToken(Order), useValue: createRepository() },
+        { provide: getRepositoryToken(Order), useValue: orderRepository },
         { provide: getRepositoryToken(Client), useValue: createRepository() },
         { provide: getRepositoryToken(User), useValue: createRepository() },
-        { provide: getRepositoryToken(Product), useValue: createRepository() },
+        { provide: getRepositoryToken(Product), useValue: productRepository },
         { provide: getRepositoryToken(OrdersDetail), useValue: createRepository() },
         { provide: getRepositoryToken(Topping), useValue: createRepository() },
         { provide: getRepositoryToken(Sale), useValue: createRepository() },
         { provide: getRepositoryToken(SaleDetail), useValue: createRepository() },
         { provide: getRepositoryToken(StockAlert), useValue: stockAlertRepository },
+        { provide: OrdersGateway, useValue: { notifyOrderCreated: jest.fn(), notifyOrderUpdated: jest.fn() } },
       ],
     }).compile();
 
@@ -69,5 +76,30 @@ describe('OrdersService', () => {
     await (service as any).syncStockAlert(product);
 
     expect(stockAlertRepository.create).toHaveBeenCalled();
+  });
+
+  it('anula un pedido y repone el stock de cada línea con incrementos atómicos', async () => {
+    orderRepository.findOne.mockResolvedValue({
+      id: 'order-1',
+      status: 'pending',
+      details: [
+        { quantity: 2, product: { id: 'prod-1', name: 'Cupcake', current_stock: 10 } },
+        { quantity: 1, product: { id: 'prod-1', name: 'Cupcake', current_stock: 10 } },
+      ],
+    });
+    productRepository.findOne.mockResolvedValue({ id: 'prod-1', name: 'Cupcake', current_stock: 13, minimum_stock: 3 });
+    stockAlertRepository.findOne.mockResolvedValue(null);
+
+    const result = await service.remove('order-1');
+
+    expect(productRepository.increment).toHaveBeenNthCalledWith(1, { id: 'prod-1' }, 'current_stock', 2);
+    expect(productRepository.increment).toHaveBeenNthCalledWith(2, { id: 'prod-1' }, 'current_stock', 1);
+    expect(orderRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }));
+    expect(result.message).toBe('Pedido cancelado correctamente');
+  });
+
+  it('no permite cancelar un pedido ya cancelado', async () => {
+    orderRepository.findOne.mockResolvedValue({ id: 'order-2', status: 'cancelled', details: [] });
+    await expect(service.remove('order-2')).rejects.toThrow('El pedido ya está cancelado');
   });
 });
