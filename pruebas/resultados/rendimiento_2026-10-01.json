@@ -1,0 +1,49 @@
+{
+ "fecha": "2026-10-01T13:05",
+ "equipo": "Windows-11-10.0.26300-SP0",
+ "procesador": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+ "resultados": [
+  {
+   "operacion": "Inicio de sesión (POST /auth/login)",
+   "n": 30,
+   "promedio_ms": 75.3,
+   "p95_ms": 86.7,
+   "max_ms": 91.1
+  },
+  {
+   "operacion": "Consulta de productos (GET /products)",
+   "n": 30,
+   "promedio_ms": 5.7,
+   "p95_ms": 6.7,
+   "max_ms": 7.0
+  },
+  {
+   "operacion": "Registro de venta con ticket (POST /sale)",
+   "n": 30,
+   "promedio_ms": 40.9,
+   "p95_ms": 57.5,
+   "max_ms": 62.5
+  },
+  {
+   "operacion": "Registro de pedido (POST /orders)",
+   "n": 30,
+   "promedio_ms": 18.7,
+   "p95_ms": 21.8,
+   "max_ms": 23.8
+  },
+  {
+   "operacion": "Consulta de ventas para reportes (GET /sale)",
+   "n": 30,
+   "promedio_ms": 15.0,
+   "p95_ms": 17.4,
+   "max_ms": 18.4
+  },
+  {
+   "operacion": "Consulta de alertas activas (GET /stock-alert/active)",
+   "n": 30,
+   "promedio_ms": 5.6,
+   "p95_ms": 6.4,
+   "max_ms": 6.5
+  }
+ ]
+}

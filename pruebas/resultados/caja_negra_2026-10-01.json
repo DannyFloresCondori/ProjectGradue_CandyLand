@@ -1,0 +1,194 @@
+{
+ "fecha": "2026-10-01T12:01",
+ "casos": [
+  {
+   "id": "CN-01",
+   "rf": "RF-01",
+   "caso": "Inicio de sesión con contraseña incorrecta",
+   "entrada": "usuario admin, contraseña errónea",
+   "esperado": "HTTP 401 y no se entrega token",
+   "obtenido": "HTTP 401: Usuario o contraseña incorrectos",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-02",
+   "rf": "RF-01",
+   "caso": "Inicio de sesión con credenciales válidas",
+   "entrada": "usuario admin, contraseña correcta",
+   "esperado": "HTTP 201 con token JWT y rol Administrador",
+   "obtenido": "HTTP 201, token JWT recibido, rol Administrador",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-03",
+   "rf": "RNF-01",
+   "caso": "Acceso a la API sin token",
+   "entrada": "GET /products sin cabecera Authorization",
+   "esperado": "HTTP 401",
+   "obtenido": "HTTP 401: Sesión no válida. Inicie sesión nuevamente.",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-04",
+   "rf": "RNF-01",
+   "caso": "Acceso con token falsificado",
+   "entrada": "GET /products con token no firmado por el servidor",
+   "esperado": "HTTP 401",
+   "obtenido": "HTTP 401",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-05",
+   "rf": "RF-02",
+   "caso": "El administrador registra un usuario con rol Cajero",
+   "entrada": "POST /users {cajero, rol Cajero}",
+   "esperado": "HTTP 201 y el nuevo usuario puede iniciar sesión con su rol",
+   "obtenido": "HTTP 201; inicio de sesión de cajero: HTTP 201, rol Cajero",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-06",
+   "rf": "RF-02",
+   "caso": "Un cajero intenta crear un usuario",
+   "entrada": "POST /users con token de cajero",
+   "esperado": "HTTP 403 (sin permisos)",
+   "obtenido": "HTTP 403: No tiene permisos para realizar esta acción.",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-07",
+   "rf": "RF-02",
+   "caso": "Un usuario desactivado intenta iniciar sesión",
+   "entrada": "usuario 'temporal' desactivado por el administrador",
+   "esperado": "HTTP 401",
+   "obtenido": "HTTP 401: El usuario se encuentra desactivado",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-08",
+   "rf": "RF-04",
+   "caso": "Registro de categoría según rol",
+   "entrada": "POST /categories como administrador y como cajero",
+   "esperado": "Administrador: HTTP 201; cajero: HTTP 403",
+   "obtenido": "administrador HTTP 201; cajero HTTP 403",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-09",
+   "rf": "RF-05 / RF-06",
+   "caso": "Registro de producto con categoría, stock y topping asociado",
+   "entrada": "POST /products {Helado de fresa, Bs 10, stock 20, mínimo 5, categoría Helados, topping Chispas}",
+   "esperado": "HTTP 201; el producto queda con su categoría, stock y topping",
+   "obtenido": "HTTP 201; stock 20; categoría Helados; topping asociado: sí",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-10",
+   "rf": "RF-07",
+   "caso": "Registro de promoción de descuento porcentual",
+   "entrada": "POST /promotions {20 %, vigencia 5 días, Helado de fresa}",
+   "esperado": "HTTP 201",
+   "obtenido": "HTTP 201",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-11",
+   "rf": "RF-03",
+   "caso": "Registro y búsqueda de cliente",
+   "entrada": "POST /client {María Rojas, CI 7894561}; GET /client?ci=7894561",
+   "esperado": "HTTP 201 y el cliente aparece en la búsqueda",
+   "obtenido": "HTTP 201; encontrado por CI: sí",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-12",
+   "rf": "RF-09",
+   "caso": "Registro de venta directa con promoción vigente",
+   "entrada": "3 × Helado de fresa (Bs 10, promoción 20 %), pago en efectivo",
+   "esperado": "HTTP 201; total Bs 24,00; stock 20 → 17; método de pago efectivo",
+   "obtenido": "HTTP 201; total Bs 24.00; stock 17; método in_efective",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-13",
+   "rf": "RF-12",
+   "caso": "Generación del ticket de venta",
+   "entrada": "GET /sale/{id}/ticket",
+   "esperado": "HTTP 200 con un documento PDF",
+   "obtenido": "HTTP 200; tipo application/pdf; 58942 bytes",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-14",
+   "rf": "RF-09",
+   "caso": "Venta con stock insuficiente",
+   "entrada": "10 × Agua 500 ml con stock 3",
+   "esperado": "HTTP 400 y el stock no cambia",
+   "obtenido": "HTTP 400: Stock insuficiente para producto Agua 500 ml; stock 3",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-15",
+   "rf": "RF-10",
+   "caso": "Alerta automática al llegar al stock mínimo",
+   "entrada": "Venta de 1 × Agua 500 ml (stock 3, mínimo 2), pago QR",
+   "esperado": "Stock 3 → 2 y alerta activa para el producto",
+   "obtenido": "venta HTTP 201; stock 2; alerta activa: sí",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-16",
+   "rf": "RF-08",
+   "caso": "Registro de pedido a domicilio",
+   "entrada": "2 × Helado de fresa con topping, cliente María Rojas, dirección",
+   "esperado": "HTTP 201; pedido de tipo delivery en estado pending",
+   "obtenido": "HTTP 201; tipo delivery; estado pending",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-17",
+   "rf": "RF-08",
+   "caso": "Registro de pedido programado",
+   "entrada": "1 × Helado de fresa programado para 20/12/2026 15:00",
+   "esperado": "HTTP 201; tipo scheduled con fecha programada",
+   "obtenido": "HTTP 201; tipo scheduled; programado para 2026-12-20T19:00:00.000Z",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-18",
+   "rf": "RF-13",
+   "caso": "Pantalla de preparación: cocina actualiza el estado del pedido",
+   "entrada": "Usuario Cocina: PATCH estado 'preparing'; intenta registrar una venta",
+   "esperado": "Actualización HTTP 200; venta HTTP 403",
+   "obtenido": "actualización HTTP 200 (estado preparing); venta HTTP 403",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-19",
+   "rf": "RF-15",
+   "caso": "Anulación de venta con restitución de stock",
+   "entrada": "Anular la venta CN-12 sin motivo y luego con motivo",
+   "esperado": "Sin motivo: HTTP 400; con motivo: HTTP 200, estado canceled y +3 unidades",
+   "obtenido": "sin motivo HTTP 400; con motivo HTTP 200; estado canceled; stock 14 → 17",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-20",
+   "rf": "RF-15",
+   "caso": "Anulación de pedido con restitución de stock",
+   "entrada": "Cancelar el pedido CN-16 (2 unidades)",
+   "esperado": "HTTP 200, estado cancelled en el listado de pedidos y +2 unidades",
+   "obtenido": "HTTP 200; estado cancelled; stock 17 → 19",
+   "estado": "Aprobado"
+  },
+  {
+   "id": "CN-21",
+   "rf": "RF-14",
+   "caso": "Datos de ventas para reportes",
+   "entrada": "GET /sale como administrador",
+   "esperado": "HTTP 200 con las ventas, su total, método de pago y estado",
+   "obtenido": "HTTP 200; 2 ventas con total, método de pago y estado",
+   "estado": "Aprobado"
+  }
+ ]
+}
