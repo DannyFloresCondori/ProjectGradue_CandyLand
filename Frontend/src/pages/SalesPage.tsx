@@ -20,6 +20,7 @@ import { ToppingSelector } from '@/components/shared/ToppingSelector'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
 import { formatStockReturnMessage } from '@/lib/stockMessage'
+import { confirmAction, showSuccessAlert } from '@/lib/alerts'
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import type { Sale, SaleDetailInput, PaymentType, Customer, Promotion, Product, Category } from '@/types'
@@ -147,7 +148,7 @@ export const SalesPage: FC = () => {
 
   const { data: sales = [], isLoading } = useQuery({ queryKey: ['sales'], queryFn: saleService.getAll })
   const { data: products = [] } = useQuery({ queryKey: ['products-active'], queryFn: productService.getActive })
-  const { data: toppings = [] } = useQuery({ queryKey: ['toppings'], queryFn: toppingService.getActive })
+  const { data: toppings = [] } = useQuery({ queryKey: ['toppings', 'active'], queryFn: toppingService.getActive })
   const { data: customers = [] } = useQuery({ queryKey: ['customers-active'], queryFn: customerService.getActive })
 
   const categories: Category[] = Array.from(
@@ -377,7 +378,7 @@ export const SalesPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['dashboard-metrics'] })
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: ['active-alerts'] })
-      toast.success('Venta registrada')
+      showSuccessAlert('Venta registrada correctamente')
       setIsNewOpen(false); resetSale(); setTicketSale(sale)
     },
     onError: (e: Error) => toast.error(e.message),
@@ -402,15 +403,24 @@ export const SalesPage: FC = () => {
         // fallback: already invalidated by key above
       }
       const canceledSale = sales.find((sale) => sale.id === id)
-      toast.success(canceledSale ? formatStockReturnMessage(canceledSale.details) : 'Stock restituido.')
+      showSuccessAlert('Venta anulada correctamente', canceledSale ? formatStockReturnMessage(canceledSale.details) : 'Stock restituido.')
       setCancelModal(null)
     },
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const handleCreateSale = () => {
+  const handleCreateSale = async () => {
     if (cart.length === 0) { toast.error('Agrega al menos un producto'); return }
     if (!selectedCustomer && !isGeneralClient) { toast.error('Selecciona un cliente o usa Cliente General'); return }
+
+    const confirmed = await confirmAction(
+      '¿Estás seguro de realizar la venta?',
+      `Total: ${formatCurrency(cartTotal)}`,
+      'Sí, realizar venta',
+    )
+
+    if (!confirmed) return
+
     createMut.mutate({
       details: cart.map(i => ({ productId: i.productId, quantity: i.quantity, toppingIds: i.toppingIds })),
       paymentType, customerId: selectedCustomer?.id ?? null, orderId: null,

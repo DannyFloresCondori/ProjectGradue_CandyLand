@@ -21,6 +21,7 @@ import {
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { showSuccessAlert } from "@/lib/alerts";
 import toast from "react-hot-toast";
 import type { Product } from "@/types";
 
@@ -97,7 +98,7 @@ export const ProductsPage: FC = () => {
     queryFn: categoryService.getActive,
   });
   const { data: toppings = [] } = useQuery({
-    queryKey: ["toppings"],
+    queryKey: ["toppings", "active"],
     queryFn: toppingService.getActive,
   });
 
@@ -127,7 +128,7 @@ export const ProductsPage: FC = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Producto creado");
+      showSuccessAlert("Producto registrado correctamente");
       closeModal();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -141,16 +142,16 @@ export const ProductsPage: FC = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Producto actualizado");
+      showSuccessAlert("Producto actualizado correctamente");
       closeModal();
     },
     onError: (e: Error) => toast.error(e.message),
   });
   const toggleMutation = useMutation({
     mutationFn: (id: string) => productService.toggleActive(id),
-    onSuccess: () => {
+    onSuccess: (product) => {
       qc.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Estado actualizado");
+      showSuccessAlert(product.isActive ? "Producto activado correctamente" : "Producto desactivado correctamente");
     },
     onError: (e: Error) => toast.error(e.message),
   });

@@ -20,7 +20,7 @@ export const toppingService = {
   },
 
   async getActive(): Promise<Topping[]> {
-    const toppings = await this.getAll()
+    const toppings = await toppingService.getAll()
     return toppings.filter((t) => t.isActive)
   },
 

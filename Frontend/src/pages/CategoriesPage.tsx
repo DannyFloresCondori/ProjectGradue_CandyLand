@@ -12,6 +12,7 @@ import { PlusIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { showSuccessAlert } from "@/lib/alerts";
 import toast from "react-hot-toast";
 
 const schema = z.object({
@@ -46,7 +47,7 @@ export const CategoriesPage: FC = () => {
     mutationFn: (d: FormData) => categoryService.create(d.name),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["categories"] });
-      toast.success("Categoría creada");
+      showSuccessAlert("Categoría registrada correctamente");
       closeModal();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -56,15 +57,16 @@ export const CategoriesPage: FC = () => {
       categoryService.update(id, name),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["categories"] });
-      toast.success("Categoría actualizada");
+      showSuccessAlert("Categoría actualizada correctamente");
       closeModal();
     },
     onError: (e: Error) => toast.error(e.message),
   });
   const toggleMut = useMutation({
     mutationFn: (id: string) => categoryService.toggleActive(id),
-    onSuccess: () => {
+    onSuccess: (category) => {
       qc.invalidateQueries({ queryKey: ["categories"] });
+      showSuccessAlert(category.isActive ? "Categoría activada correctamente" : "Categoría desactivada correctamente");
     },
     onError: (e: Error) => toast.error(e.message),
   });

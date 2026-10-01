@@ -108,6 +108,7 @@ export const productService = {
     try {
       const { data } = await apiClient.post('/products', {
         name: input.name,
+        image: '',
         description: input.description || undefined,
         price: input.price,
         current_stock: input.stock,

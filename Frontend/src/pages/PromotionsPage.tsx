@@ -13,6 +13,7 @@ import { PlusIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { showSuccessAlert } from "@/lib/alerts";
 import toast from "react-hot-toast";
 import type { Promotion, PromotionInput } from "@/types";
 
@@ -109,7 +110,7 @@ export const PromotionsPage: FC = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["promotions"] });
       qc.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Promoción creada");
+      showSuccessAlert("Promoción registrada correctamente");
       closeModal();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -117,11 +118,15 @@ export const PromotionsPage: FC = () => {
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<PromotionInput> }) =>
       promotionService.update(id, data),
-    onSuccess: () => {
+    onSuccess: (_, { data }) => {
       qc.invalidateQueries({ queryKey: ["promotions"] });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["products-active"] });
-      toast.success("Promoción actualizada");
+      showSuccessAlert(
+        data.isActive === true
+          ? "Promoción activada correctamente"
+          : "Promoción actualizada correctamente",
+      );
       closeModal();
       closeActivate();
     },
@@ -129,10 +134,11 @@ export const PromotionsPage: FC = () => {
   });
   const toggleMut = useMutation({
     mutationFn: (id: string) => promotionService.toggleActive(id),
-    onSuccess: () => {
+    onSuccess: (promotion) => {
       qc.invalidateQueries({ queryKey: ["promotions"] });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["products-active"] });
+      showSuccessAlert(promotion.isActive ? "Promoción activada correctamente" : "Promoción desactivada correctamente");
     },
   });
 

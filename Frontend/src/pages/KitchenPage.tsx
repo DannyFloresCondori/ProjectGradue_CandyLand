@@ -16,6 +16,7 @@ import {
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/utils'
 import { formatStockReturnMessage } from '@/lib/stockMessage'
+import { confirmAction, showSuccessAlert } from '@/lib/alerts'
 import { useAuthStore } from '@/stores/authStore'
 import type { Order, OrderStatus, PaymentType } from '@/types'
 
@@ -215,7 +216,6 @@ export const KitchenPage: FC = () => {
   const { user, hasRole } = useAuthStore()
   const canDeliverOrders = hasRole(['admin', 'cajero'])
   const [clock, setClock] = useState(() => Date.now())
-  const [cancelScheduledOrder, setCancelScheduledOrder] = useState<Order | null>(null)
   const [expiredReminder, setExpiredReminder] = useState<Order | null>(null)
   const [deliveryDraft, setDeliveryDraft] = useState<{ order: Order | null; paymentType: PaymentType }>({ order: null, paymentType: 'cash' })
 
@@ -256,11 +256,21 @@ export const KitchenPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['products'] })
       qc.invalidateQueries({ queryKey: ['products-active'] })
       qc.invalidateQueries({ queryKey: ['low-stock'] })
-      setCancelScheduledOrder(null)
-      toast.success(formatStockReturnMessage(order.details))
+      showSuccessAlert('Pedido cancelado correctamente', formatStockReturnMessage(order.details))
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  const handleCancelScheduledOrder = async (order: Order) => {
+    const confirmed = await confirmAction(
+      '¿Cancelar pedido programado?',
+      `Pedido #${order.id.slice(-6).toUpperCase()}. El stock reservado será restituido.`,
+      'Sí, cancelar pedido',
+    )
+    if (!confirmed) return
+    cancelMut.mutate(order)
+    if (expiredReminder?.id === order.id) setExpiredReminder(null)
+  }
 
   const deliverMut = useMutation({
     mutationFn: ({ order, paymentType }: { order: Order; paymentType: PaymentType }) => saleService.create({
@@ -286,7 +296,7 @@ export const KitchenPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: ['active-alerts'] })
       setDeliveryDraft({ order: null, paymentType: 'cash' })
-      toast.success('Pedido entregado; la venta se registró con la fecha de entrega')
+      showSuccessAlert('Venta registrada correctamente', 'Pedido entregado con la fecha de entrega.')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -410,7 +420,7 @@ export const KitchenPage: FC = () => {
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => setCancelScheduledOrder(order)}
+                      onClick={() => { void handleCancelScheduledOrder(order) }}
                     >
                       Cancelar pedido
                     </Button>
@@ -437,7 +447,7 @@ export const KitchenPage: FC = () => {
               <Button
                 size="sm"
                 variant="primary"
-                onClick={() => setCancelScheduledOrder(expiredReminder)}
+                onClick={() => { void handleCancelScheduledOrder(expiredReminder) }}
               >
                 Sí, cancelar
               </Button>
@@ -623,35 +633,6 @@ export const KitchenPage: FC = () => {
         </div>
       </Modal>
 
-      <Modal
-        isOpen={Boolean(cancelScheduledOrder)}
-        onClose={() => setCancelScheduledOrder(null)}
-        title="Cancelar pedido programado"
-        size="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-gray-700">
-            ¿Está seguro o segura de que quiere cancelar el pedido programado #{cancelScheduledOrder?.id.slice(-6).toUpperCase()}?
-          </p>
-          <p className="text-xs text-gray-500">El stock reservado será restituido.</p>
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setCancelScheduledOrder(null)}>
-              No, volver
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (!cancelScheduledOrder) return
-                cancelMut.mutate(cancelScheduledOrder)
-                if (expiredReminder?.id === cancelScheduledOrder.id) setExpiredReminder(null)
-              }}
-              isLoading={cancelMut.isPending}
-            >
-              Sí, cancelar pedido
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }

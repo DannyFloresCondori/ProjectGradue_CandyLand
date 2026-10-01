@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { showSuccessAlert } from '@/lib/alerts'
 import toast from 'react-hot-toast'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -50,7 +51,7 @@ export const QuickCustomerModal: FC<QuickCustomerModalProps> = ({ isOpen, prefil
     onSuccess: (c) => {
       qc.invalidateQueries({ queryKey: ['customers'] })
       qc.invalidateQueries({ queryKey: ['customers-active'] })
-      toast.success(`Cliente "${c.fullName}" registrado`)
+      showSuccessAlert('Cliente registrado correctamente', c.fullName)
       onCreated(c)
     },
     onError: (e: Error) => toast.error(e.message),

@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { cn, formatRelativeTime, formatDateTime } from '@/lib/utils'
 import { formatStockReturnMessage } from '@/lib/stockMessage'
+import { confirmAction, showSuccessAlert } from '@/lib/alerts'
 import type { Notification, Order } from '@/types'
 import LogoImg from '@/assets/Logo.jpeg'
 import toast from 'react-hot-toast'
@@ -309,7 +310,7 @@ export const Navbar: FC = () => {
       qc.invalidateQueries({ queryKey: ['products'] })
       qc.invalidateQueries({ queryKey: ['products-active'] })
       qc.invalidateQueries({ queryKey: ['low-stock'] })
-      toast.success(formatStockReturnMessage(order.details))
+      showSuccessAlert('Pedido cancelado correctamente', formatStockReturnMessage(order.details))
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -318,12 +319,16 @@ export const Navbar: FC = () => {
     if (id) startPreparationMut.mutate(id)
   }
 
-  const handleCancelOrder = (id: string) => {
+  const handleCancelOrder = async (id: string) => {
     if (!id) return
-    if (window.confirm('¿Está seguro o segura de que quiere cancelar este pedido programado?')) {
-      const order = scheduledOrders.find((item) => item.id === id)
-      if (order) cancelOrderMut.mutate(order)
-    }
+    const order = scheduledOrders.find((item) => item.id === id)
+    if (!order) return
+    const confirmed = await confirmAction(
+      '¿Cancelar pedido programado?',
+      `¿Está seguro de cancelar el pedido #${id.slice(-6).toUpperCase()}?`,
+      'Sí, cancelar pedido',
+    )
+    if (confirmed) cancelOrderMut.mutate(order)
   }
 
   // Close panels on click-outside and Escape

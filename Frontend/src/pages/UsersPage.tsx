@@ -14,6 +14,7 @@ import { EyeIcon, PlusIcon } from '@heroicons/react/24/outline'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { showSuccessAlert } from '@/lib/alerts'
 import toast from 'react-hot-toast'
 import type { User } from '@/types'
 
@@ -63,8 +64,14 @@ export const UsersPage: FC = () => {
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(schema) })
 
-  const createMut = useMutation({ mutationFn: (d: FormData) => userService.create(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); toast.success('Usuario creado'); closeModal() }, onError: (e: Error) => toast.error(e.message) })
-  const toggleMut = useMutation({ mutationFn: (id: string) => userService.toggleActive(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }) })
+  const createMut = useMutation({ mutationFn: (d: FormData) => userService.create(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); showSuccessAlert('Usuario registrado correctamente'); closeModal() }, onError: (e: Error) => toast.error(e.message) })
+  const toggleMut = useMutation({
+    mutationFn: (id: string) => userService.toggleActive(id),
+    onSuccess: (user) => {
+      qc.invalidateQueries({ queryKey: ['users'] })
+      showSuccessAlert(user.isActive ? 'Usuario activado correctamente' : 'Usuario desactivado correctamente')
+    },
+  })
 
   const openCreate = () => { reset(); setEditing(null); setIsOpen(true) }
   const closeModal = () => { setIsOpen(false); setEditing(null); reset() }

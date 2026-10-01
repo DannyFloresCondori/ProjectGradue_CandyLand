@@ -10,6 +10,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Pagination } from "@/components/ui/Pagination";
 import { formatDateTime } from "@/lib/utils";
+import { showSuccessAlert } from "@/lib/alerts";
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
 import toast from "react-hot-toast";
 import type { Product } from "@/types";
@@ -85,7 +86,7 @@ export const InventoryPage: FC = () => {
         qc.invalidateQueries({ queryKey: ["products"] }),
         qc.invalidateQueries({ queryKey: ["products-active"] }),
       ]);
-      toast.success("Stock actualizado");
+      showSuccessAlert("Stock aumentado correctamente");
       setEditingProduct(null);
     },
     onError: (e: Error) => toast.error(e.message),

@@ -17,6 +17,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { showSuccessAlert } from "@/lib/alerts";
 import toast from "react-hot-toast";
 import type { Customer } from "@/types";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -72,7 +73,7 @@ export const CustomersPage: FC = () => {
     mutationFn: (d: FormData) => customerService.create(d),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customers"] });
-      toast.success("Cliente registrado");
+      showSuccessAlert("Cliente registrado correctamente");
       closeModal();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -82,14 +83,17 @@ export const CustomersPage: FC = () => {
       customerService.update(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customers"] });
-      toast.success("Cliente actualizado");
+      showSuccessAlert("Cliente actualizado correctamente");
       closeModal();
     },
     onError: (e: Error) => toast.error(e.message),
   });
   const toggleMut = useMutation({
     mutationFn: (id: string) => customerService.toggleActive(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["customers"] }),
+    onSuccess: (customer) => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      showSuccessAlert(customer.isActive ? "Cliente activado correctamente" : "Cliente desactivado correctamente");
+    },
   });
 
   const openCreate = () => {

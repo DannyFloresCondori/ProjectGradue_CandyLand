@@ -13,6 +13,7 @@ import { PlusIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { showSuccessAlert } from "@/lib/alerts";
 import toast from "react-hot-toast";
 import type { Topping } from "@/types";
 
@@ -33,7 +34,7 @@ export const ToppingsPage: FC = () => {
   const [editing, setEditing] = useState<Topping | null>(null);
 
   const { data: toppings = [], isLoading } = useQuery({
-    queryKey: ["toppings"],
+    queryKey: ["toppings", "all"],
     queryFn: toppingService.getAll,
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,7 +49,7 @@ export const ToppingsPage: FC = () => {
     mutationFn: (d: FormData) => toppingService.create(d.name),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["toppings"] });
-      toast.success("Topping creado");
+      showSuccessAlert("Topping registrado correctamente");
       closeModal();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -58,14 +59,17 @@ export const ToppingsPage: FC = () => {
       toppingService.update(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["toppings"] });
-      toast.success("Topping actualizado");
+      showSuccessAlert("Topping actualizado correctamente");
       closeModal();
     },
     onError: (e: Error) => toast.error(e.message),
   });
   const toggleMut = useMutation({
     mutationFn: (id: string) => toppingService.toggleActive(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["toppings"] }),
+    onSuccess: (topping) => {
+      qc.invalidateQueries({ queryKey: ["toppings"] });
+      showSuccessAlert(topping.isActive ? "Topping activado correctamente" : "Topping desactivado correctamente");
+    },
   });
 
   const openCreate = () => {

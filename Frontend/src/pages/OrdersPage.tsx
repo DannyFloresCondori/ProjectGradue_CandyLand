@@ -34,6 +34,7 @@ import {
 } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 import { formatStockReturnMessage } from "@/lib/stockMessage";
+import { confirmAction, showSuccessAlert } from "@/lib/alerts";
 import {
   PlusIcon,
   XMarkIcon,
@@ -240,7 +241,6 @@ export const OrdersPage: FC = () => {
     null,
   );
   const [editNotes, setEditNotes] = useState("");
-  const [preCancel, setPreCancel] = useState<Order | null>(null);
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["orders"],
@@ -251,7 +251,7 @@ export const OrdersPage: FC = () => {
     queryFn: productService.getActive,
   });
   const { data: toppings = [] } = useQuery({
-    queryKey: ["toppings"],
+    queryKey: ["toppings", "active"],
     queryFn: toppingService.getActive,
   });
   const { data: customers = [] } = useQuery({
@@ -365,7 +365,7 @@ export const OrdersPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['alerts'] });
       qc.invalidateQueries({ queryKey: ['active-alerts'] });
       qc.invalidateQueries({ queryKey: ['low-stock'] });
-      toast.success("Pedido registrado");
+      showSuccessAlert("Pedido registrado correctamente");
       closeNewModal();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -402,11 +402,19 @@ export const OrdersPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['alerts'] });
       qc.invalidateQueries({ queryKey: ['active-alerts'] });
       qc.invalidateQueries({ queryKey: ['low-stock'] });
-      toast.success(formatStockReturnMessage(order.details));
-      setPreCancel(null);
+      showSuccessAlert("Pedido cancelado correctamente", formatStockReturnMessage(order.details));
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const handleCancelOrder = async (order: Order) => {
+    const confirmed = await confirmAction(
+      "¿Está seguro de cancelar el pedido?",
+      `Pedido #${order.id.slice(-6).toUpperCase()}. El stock reservado será restituido.`,
+      "Sí, cancelar pedido",
+    );
+    if (confirmed) cancelMut.mutate({ order });
+  };
 
   const editMut = useMutation({
     mutationFn: async () => {
@@ -457,7 +465,7 @@ export const OrdersPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['alerts'] });
       qc.invalidateQueries({ queryKey: ['active-alerts'] });
       qc.invalidateQueries({ queryKey: ['low-stock'] });
-      toast.success("Pedido editado");
+      showSuccessAlert("Pedido actualizado correctamente");
       setEditOrder(null);
       setEditCart([]);
       setEditOrderType("delivery");
@@ -940,7 +948,7 @@ export const OrdersPage: FC = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => setPreCancel(o)}
+                              onClick={() => { void handleCancelOrder(o); }}
                               title="Cancelar pedido"
                             >
                               <XMarkIcon className="h-4 w-4 text-red-400" />
@@ -1533,35 +1541,6 @@ export const OrdersPage: FC = () => {
         {viewOrder && <OrderDetailView order={viewOrder} products={products} />}
       </Modal>
 
-      {/* ─── Cancel Modal ─────────────────────────────────────────────────── */}
-      {/* ─── Pre-confirm Cancel Modal (¿Está segur@...?) ─────────────────────── */}
-      <Modal
-        isOpen={!!preCancel}
-        onClose={() => setPreCancel(null)}
-        title=""
-        size="sm"
-      >
-        {preCancel && (
-          <div className="space-y-4">
-            <div className="px-4 py-3 text-sm">
-              <p className="font-medium text-gray-900">¿Está segur@ que quiere cancelar el pedido?</p>
-            </div>
-            <div className="flex justify-end gap-2 px-4">
-              <Button variant="secondary" onClick={() => setPreCancel(null)}>Negar</Button>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  if (!preCancel) return;
-                  cancelMut.mutate({ order: preCancel });
-                }}
-              >
-                Confirmar
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-      
     </div>
   );
 };
