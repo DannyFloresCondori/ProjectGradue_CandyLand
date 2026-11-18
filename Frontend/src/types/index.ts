@@ -54,6 +54,7 @@ export interface Product {
   imageUrl: string
   price: number
   stock: number
+  displayStock?: number
   minStock: number
   isActive: boolean
   toppings: Topping[]
@@ -111,6 +112,9 @@ export interface Order {
   customerPhone: string | null
   orderType: OrderType
   status: OrderStatus
+  stockReserved?: boolean
+  isPaid?: boolean
+  paymentType?: PaymentType | null
   deliveryAddress: string | null
   scheduledAt: string | null
   total: number
@@ -145,6 +149,7 @@ export interface Sale {
   userRole?: string | null
   orderId: string | null
   orderType?: SaleOrderType
+  orderStatus?: OrderStatus | null
   deliveryAddress?: string | null
   scheduledAt?: string | null
   customerId: string | null
@@ -268,6 +273,7 @@ export interface OrderInput {
   deliveryAddress: string | null
   scheduledAt: string | null
   notes: string | null
+  paymentType?: PaymentType
   details: OrderDetailInput[]
 }
 

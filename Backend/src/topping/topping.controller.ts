@@ -19,6 +19,12 @@ export class ToppingController {
     return this.toppingService.findAll();
   }
 
+  @AllowRoles('admin')
+  @Get('management/all')
+  findAllIncludingInactive() {
+    return this.toppingService.findAllIncludingInactive();
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.toppingService.findOne(id);
@@ -28,6 +34,12 @@ export class ToppingController {
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() updateToppingDto: UpdateToppingDto) {
     return this.toppingService.update(id, updateToppingDto);
+  }
+
+  @AllowRoles('admin')
+  @Patch(':id/reactivate')
+  reactivate(@Param('id', ParseUUIDPipe) id: string) {
+    return this.toppingService.reactivate(id);
   }
 
   @AllowRoles('admin')

@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -18,36 +22,50 @@ export class ClientService {
     const normalizedDirection = createClientDto.direction?.trim();
     const normalizedCi = createClientDto.ci?.trim();
 
+    // Validar CI duplicado
     if (normalizedCi) {
       const existingClientByCi = await this.clientRepository.findOne({
         where: { ci: normalizedCi },
       });
+
       if (existingClientByCi) {
-        return existingClientByCi;
+        throw new ConflictException(
+          'El CI ya está registrado. No se puede registrar nuevamente.',
+        );
       }
     }
 
+    // Validar teléfono duplicado
     if (normalizedPhone) {
       const existingClientByPhone = await this.clientRepository.findOne({
         where: { phone: normalizedPhone },
       });
+
       if (existingClientByPhone) {
-        return existingClientByPhone;
+        throw new ConflictException(
+          'El número de teléfono ya está registrado.',
+        );
       }
     }
 
+    // Validar nombre y dirección duplicados
     if (normalizedName && normalizedDirection) {
-      const existingClientByNameAndAddress = await this.clientRepository.findOne({
-        where: {
-          full_name: normalizedName,
-          direction: normalizedDirection,
-        },
-      });
+      const existingClientByNameAndAddress =
+        await this.clientRepository.findOne({
+          where: {
+            full_name: normalizedName,
+            direction: normalizedDirection,
+          },
+        });
+
       if (existingClientByNameAndAddress) {
-        return existingClientByNameAndAddress;
+        throw new ConflictException(
+          'Ya existe un cliente con el mismo nombre y dirección.',
+        );
       }
     }
 
+    // Crear cliente únicamente si supera las validaciones
     const client = this.clientRepository.create({
       ...createClientDto,
       full_name: normalizedName,
@@ -60,8 +78,11 @@ export class ClientService {
       return await this.clientRepository.save(client);
     } catch (error: any) {
       if (error?.code === '23505') {
-        throw new ConflictException('Ya existe un cliente con este CI');
+        throw new ConflictException(
+          'Ya existe un cliente con alguno de los datos registrados.',
+        );
       }
+
       throw error;
     }
   }
@@ -76,15 +97,16 @@ export class ClientService {
           // Also try without case sensitivity for better matching
         ],
       });
-      
+
       // If exact match not found, try case-insensitive search
       if (clients.length === 0) {
         const allClients = await this.clientRepository.find();
         return allClients.filter(
-          (client) => client.ci?.trim().toLowerCase() === normalizedCi.toLowerCase()
+          (client) =>
+            client.ci?.trim().toLowerCase() === normalizedCi.toLowerCase(),
         );
       }
-      
+
       return clients;
     }
     // Return all clients ordered by creation date
@@ -93,7 +115,7 @@ export class ClientService {
 
   async findOne(id: string) {
     const client = await this.clientRepository.findOneBy({ id });
-    if(!client){
+    if (!client) {
       throw new NotFoundException('El cliente no se encuentra en el sistema');
     }
     return client;
@@ -104,7 +126,7 @@ export class ClientService {
       id,
       ...updateClientDto,
     });
-    if (!client){
+    if (!client) {
       throw new NotFoundException('El cliente no se encuentra en el sistema');
     }
     await this.clientRepository.save(client);
@@ -113,13 +135,12 @@ export class ClientService {
 
   async remove(id: string) {
     const client = await this.clientRepository.findOneBy({ id });
-    if(!client){
+    if (!client) {
       throw new NotFoundException('Cliente inexistente');
     }
 
     client.isActive = false;
     await this.clientRepository.save(client);
     return { message: 'Cliente desactivado exitosamente', client };
-    
   }
 }

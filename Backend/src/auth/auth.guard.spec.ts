@@ -67,6 +67,7 @@ describe('AuthGuard', () => {
   it('clasifica los nombres de rol en grupos', () => {
     expect(roleGroupOf('Administrador')).toBe('admin');
     expect(roleGroupOf('cocina')).toBe('kitchen');
+    expect(roleGroupOf('Cocinero')).toBe('kitchen');
     expect(roleGroupOf('Cajero')).toBe('staff');
   });
 });

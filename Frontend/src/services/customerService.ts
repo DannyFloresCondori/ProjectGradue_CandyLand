@@ -13,6 +13,24 @@ function normalizeCustomer(item: any): Customer {
   }
 }
 
+export function findCustomerDuplicateFields(
+  customers: Customer[],
+  input: Pick<Customer, 'ci' | 'phone'>,
+  excludeId?: string,
+) {
+  const ci = input.ci.trim()
+  const phone = input.phone.trim()
+
+  return {
+    ci: ci && customers.some((customer) => customer.id !== excludeId && customer.ci.trim() === ci)
+      ? 'El CI ya está registrado. No se puede registrar nuevamente.'
+      : undefined,
+    phone: phone && customers.some((customer) => customer.id !== excludeId && customer.phone.trim() === phone)
+      ? 'El número de teléfono ya está registrado.'
+      : undefined,
+  }
+}
+
 export const customerService = {
   async getAll(): Promise<Customer[]> {
     try {

@@ -5,6 +5,45 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function normalizeCatalogName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+}
+
+export function normalizeUniqueName(name: string): string {
+  return name.trim().toLowerCase()
+}
+
+export function areCatalogNamesSimilar(firstName: string, secondName: string): boolean {
+  const first = normalizeCatalogName(firstName)
+  const second = normalizeCatalogName(secondName)
+  if (first === second) return true
+  if (Math.min(first.length, second.length) < 4) return false
+  if (first.includes(second) || second.includes(first)) return true
+
+  const distances = Array.from({ length: second.length + 1 }, (_, index) => index)
+  for (let firstIndex = 1; firstIndex <= first.length; firstIndex += 1) {
+    let diagonal = distances[0]
+    distances[0] = firstIndex
+
+    for (let secondIndex = 1; secondIndex <= second.length; secondIndex += 1) {
+      const previousRow = distances[secondIndex]
+      distances[secondIndex] = Math.min(
+        distances[secondIndex] + 1,
+        distances[secondIndex - 1] + 1,
+        diagonal + (first[firstIndex - 1] === second[secondIndex - 1] ? 0 : 1),
+      )
+      diagonal = previousRow
+    }
+  }
+
+  return distances[second.length] <= Math.max(1, Math.floor(Math.max(first.length, second.length) * 0.2))
+}
+
 export function formatCurrency(amount: number): string {
   return `Bs. ${amount.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }

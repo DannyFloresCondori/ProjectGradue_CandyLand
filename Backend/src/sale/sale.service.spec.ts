@@ -88,6 +88,32 @@ describe('SaleService', () => {
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
   });
 
+  it('cancela un pedido programado pendiente sin reponer stock no descontado', async () => {
+    const order = { id: 'order-scheduled', type: 'scheduled', stock_reserved: false, status: 'pending' };
+    const sale = { ...saleWithTwoLinesOfSameProduct(), order };
+    manager.findOne.mockImplementation(async (entity: unknown) => entity === Sale ? sale : null);
+
+    await service.remove('sale-1', 'El cliente ya no lo necesita');
+
+    expect(manager.query).not.toHaveBeenCalled();
+    expect(order.status).toBe('cancelled');
+    expect(manager.save).toHaveBeenCalledWith(Order, order);
+  });
+
+  it('repone una venta programada entregada y marca su reserva como devuelta', async () => {
+    const order = { id: 'order-scheduled', type: 'scheduled', stock_reserved: true, status: 'delivered' };
+    const sale = { ...saleWithTwoLinesOfSameProduct(), order };
+    manager.findOne.mockImplementation(async (entity: unknown) =>
+      entity === Sale ? sale : { id: 'prod-1', name: 'Cupcake', current_stock: 15, minimum_stock: 3 },
+    );
+
+    await service.remove('sale-1', 'Venta anulada');
+
+    expect(manager.query).toHaveBeenCalledTimes(2);
+    expect(order.stock_reserved).toBe(false);
+    expect(manager.save).toHaveBeenCalledWith(Order, order);
+  });
+
   it('no permite anular dos veces la misma venta', async () => {
     manager.findOne.mockResolvedValue({ ...saleWithTwoLinesOfSameProduct(), status: SalesStatus.CANCELED });
 

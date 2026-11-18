@@ -14,6 +14,7 @@ import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { showSuccessAlert } from "@/lib/alerts";
+import { normalizeUniqueName } from "@/lib/utils";
 import toast from "react-hot-toast";
 import type { Promotion, PromotionInput } from "@/types";
 
@@ -216,6 +217,16 @@ export const PromotionsPage: FC = () => {
     reset();
   };
   const onSubmit: SubmitHandler<FormData> = (data) => {
+    const duplicate = promos.some(
+      (promotion) =>
+        promotion.id !== editing?.id &&
+        normalizeUniqueName(promotion.name) === normalizeUniqueName(data.name),
+    );
+    if (duplicate) {
+      toast.error("Ya existe una promoción con ese nombre");
+      return;
+    }
+
     const payload: PromotionFormData = {
       ...data,
       productIds: selectedProductIds,

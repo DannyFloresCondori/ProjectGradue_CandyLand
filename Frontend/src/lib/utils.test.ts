@@ -1,5 +1,23 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { formatCurrency, validateScheduledAt } from './utils'
+import { areCatalogNamesSimilar, formatCurrency, normalizeUniqueName, validateScheduledAt } from './utils'
+
+describe('normalizeUniqueName', () => {
+  it('recorta espacios y compara nombres sin distinguir mayúsculas', () => {
+    expect(normalizeUniqueName('  FRAPPES ')).toBe(normalizeUniqueName('frappes'))
+  })
+})
+
+describe('areCatalogNamesSimilar', () => {
+  it('ignora tildes, mayúsculas y espacios repetidos', () => {
+    expect(areCatalogNamesSimilar('Helado   de Limón', 'helado de limon')).toBe(true)
+  })
+
+  it('acepta un error tipográfico pequeño y rechaza nombres distintos', () => {
+    expect(areCatalogNamesSimilar('Chocolate', 'Chocolote')).toBe(true)
+    expect(areCatalogNamesSimilar('Frappes', 'frappe')).toBe(true)
+    expect(areCatalogNamesSimilar('Chocolate', 'Frutilla')).toBe(false)
+  })
+})
 
 describe('formatCurrency', () => {
   it('formatea montos con el prefijo Bs. y dos decimales', () => {

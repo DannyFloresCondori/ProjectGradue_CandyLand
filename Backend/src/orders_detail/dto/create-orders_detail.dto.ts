@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   Min,
 } from 'class-validator';
 
@@ -13,6 +14,7 @@ export class CreateOrdersDetailDto {
 
   @IsInt()
   @Min(1)
+  @Max(50, { message: 'La cantidad máxima por producto es 50.' })
   quantity!: number;
 
   @IsOptional()

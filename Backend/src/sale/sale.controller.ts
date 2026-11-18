@@ -1,5 +1,6 @@
 import { AllowRoles } from '../auth/auth.decorators';
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -12,7 +13,6 @@ import {
 } from '@nestjs/common';
 import { SaleService } from './sale.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
-import { UpdateSaleDto } from './dto/update-sale.dto';
 import type { Response } from 'express'; // 👈 import type
 
 @Controller('sale')
@@ -54,11 +54,8 @@ export class SaleController {
 
   @AllowRoles('admin', 'staff')
   @Patch(':id')
-  update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateSaleDto: UpdateSaleDto,
-  ) {
-    return this.saleService.update(id, updateSaleDto);
+  update() {
+    throw new BadRequestException('Las ventas no se pueden modificar; solo pueden anularse indicando un motivo.');
   }
 
   @AllowRoles('admin', 'staff')

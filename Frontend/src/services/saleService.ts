@@ -17,6 +17,7 @@ export function normalizeSale(item: any): Sale {
     userRole: item.user?.role?.name ?? item.user?.roleName ?? item.userRole ?? item.role ?? null,
     orderId: item.order?.id ?? item.orderId ?? null,
     orderType: normalizedOrderType ?? (item.orderId ? 'delivery' : 'local'),
+    orderStatus: item.order?.status ?? null,
     deliveryAddress: item.order?.delivery_address ?? item.order?.deliveryAddress ?? item.order?.client?.address ?? item.order?.address ?? null,
     scheduledAt: item.order?.scheduled_at ?? item.order?.scheduledAt ?? item.order?.delivery_date ?? item.order?.deliveryDate ?? null,
     customerId: item.client?.id ?? item.customerId ?? null,

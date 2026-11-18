@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -29,6 +30,61 @@ export class ProductsService {
     @InjectRepository(StockAlert)
     private readonly stockAlertRepository: Repository<StockAlert>,
   ) {}
+
+  private normalizeProductName(name: string) {
+    return name.trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  private areProductNamesSimilar(firstName: string, secondName: string) {
+    const first = this.normalizeProductName(firstName);
+    const second = this.normalizeProductName(secondName);
+    if (first === second) return true;
+    if (Math.min(first.length, second.length) < 4) return false;
+    if (first.includes(second) || second.includes(first)) return true;
+
+    const distances = Array.from({ length: second.length + 1 }, (_, index) => index);
+    for (let firstIndex = 1; firstIndex <= first.length; firstIndex += 1) {
+      let diagonal = distances[0];
+      distances[0] = firstIndex;
+
+      for (let secondIndex = 1; secondIndex <= second.length; secondIndex += 1) {
+        const previousRow = distances[secondIndex];
+        distances[secondIndex] = Math.min(
+          distances[secondIndex] + 1,
+          distances[secondIndex - 1] + 1,
+          diagonal + (first[firstIndex - 1] === second[secondIndex - 1] ? 0 : 1),
+        );
+        diagonal = previousRow;
+      }
+    }
+
+    return distances[second.length] <= Math.max(1, Math.floor(Math.max(first.length, second.length) * 0.2));
+  }
+
+  private async ensureProductNameIsAvailable(name: string, excludeId?: string) {
+    const products = await this.productRepository.find({
+      select: { id: true, name: true },
+    });
+    const duplicate = products.some((product) =>
+      product.id !== excludeId && this.areProductNamesSimilar(product.name, name),
+    );
+
+    if (duplicate) {
+      throw new ConflictException('Ya existe un producto con ese nombre');
+    }
+  }
+
+  private async saveProductWithNameConstraint(product: Product) {
+    try {
+      return await this.productRepository.save(product);
+    } catch (error) {
+      const databaseError = error as { code?: string; driverError?: { code?: string } };
+      if (databaseError.code === '23505' || databaseError.driverError?.code === '23505') {
+        throw new ConflictException('Ya existe un producto con ese nombre');
+      }
+      throw error;
+    }
+  }
 
   private async syncStockAlert(product: Product) {
     const message = `${product.name} llego al minimo de stock`;
@@ -100,6 +156,8 @@ export class ProductsService {
 
   async create(createProductDto: CreateProductDto) {
     const { categoryId, toppingId, ...productData } = createProductDto;
+    const normalizedName = createProductDto.name.trim();
+    await this.ensureProductNameIsAvailable(normalizedName);
 
     const category = await this.categoryRepository.findOneBy({
       id: categoryId,
@@ -110,36 +168,14 @@ export class ProductsService {
       throw new BadRequestException('Categoria no valida o inactiva');
     }
 
-    const existingProduct = await this.productRepository.findOne({
-      where: { name: createProductDto.name },
-    });
-
-    if (existingProduct?.isActive) {
-      throw new BadRequestException('El producto ya existe');
-    }
-
-    if (existingProduct && !existingProduct.isActive) {
-      existingProduct.isActive = true;
-      existingProduct.description = createProductDto.description ?? existingProduct.description;
-      existingProduct.price = createProductDto.price;
-      existingProduct.current_stock = createProductDto.current_stock;
-      existingProduct.minimum_stock = createProductDto.minimum_stock;
-      existingProduct.category = category;
-      await this.productRepository.save(existingProduct);
-      await this.syncProductToppings(existingProduct, toppingId ?? []);
-      return this.productRepository.findOne({
-        where: { id: existingProduct.id },
-        relations: { category: true, productToppings: { topping: true } },
-      });
-    }
-
     // Crear producto
     const product = this.productRepository.create({
       ...productData,
+      name: normalizedName,
       category,
     });
 
-    const savedProduct = await this.productRepository.save(product);
+    const savedProduct = await this.saveProductWithNameConstraint(product);
     await this.syncStockAlert(savedProduct);
 
     await this.syncProductToppings(savedProduct, toppingId ?? []);
@@ -174,6 +210,53 @@ export class ProductsService {
     }));
   }
 
+  async findAllIncludingInactive() {
+    const products = await this.productRepository.find({
+      relations: ['category', 'productToppings', 'productToppings.topping'],
+    });
+
+    return products.map((product) => ({
+      ...product,
+      toppings: (product.productToppings ?? []).map((productTopping) => ({
+        id: productTopping.topping?.id,
+        name: productTopping.topping?.name,
+        price: (productTopping.topping as any)?.price ?? 0,
+        isActive: productTopping.topping?.isActive,
+      })),
+    }));
+  }
+
+  async reactivate(id: string, createProductDto: CreateProductDto) {
+    const product = await this.productRepository.findOneBy({ id });
+    if (!product) throw new NotFoundException('Producto no encontrado');
+
+    if (!product.isActive) {
+      const normalizedName = createProductDto.name.trim();
+      await this.ensureProductNameIsAvailable(normalizedName, id);
+      const { categoryId, toppingId } = createProductDto;
+      const category = await this.categoryRepository.findOneBy({
+        id: categoryId,
+        isActive: true,
+      });
+      if (!category) {
+        throw new BadRequestException('Categoria no valida o inactiva');
+      }
+
+      product.name = normalizedName;
+      product.description = createProductDto.description ?? product.description;
+      product.price = createProductDto.price;
+      product.current_stock = createProductDto.current_stock;
+      product.minimum_stock = createProductDto.minimum_stock;
+      product.category = category;
+      product.isActive = true;
+      await this.saveProductWithNameConstraint(product);
+      await this.syncProductToppings(product, toppingId ?? []);
+      await this.syncStockAlert(product);
+    }
+
+    return this.findOne(id);
+  }
+
   async findOne(id: string) {
     const product = await this.productRepository.findOne({
       where: { id, isActive: true },
@@ -195,13 +278,21 @@ export class ProductsService {
   }
 
   async update(id: string, updateProductDto: UpdateProductDto) {
-    const { toppingId, ...productData } = updateProductDto;
+    const normalizedName = updateProductDto.name?.trim();
+    const normalizedUpdate = normalizedName === undefined
+      ? updateProductDto
+      : { ...updateProductDto, name: normalizedName };
+    const { toppingId, ...productData } = normalizedUpdate;
     const product = await this.productRepository.findOneBy({
       id,
       isActive: true,
     });
     if (!product) {
       throw new NotFoundException('Producto no encontrado o inactivo');
+    }
+
+    if (normalizedName !== undefined) {
+      await this.ensureProductNameIsAvailable(normalizedName, id);
     }
 
     if (updateProductDto.categoryId) {
@@ -227,7 +318,7 @@ export class ProductsService {
       updatedProduct.category = product.category;
     }
 
-    await this.productRepository.save(updatedProduct);
+    await this.saveProductWithNameConstraint(updatedProduct);
     if (toppingId !== undefined) {
       await this.syncProductToppings(updatedProduct, toppingId);
     }
@@ -257,9 +348,9 @@ export class ProductsService {
       throw new BadRequestException('No se recibió ningún archivo');
     }
 
-    const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+    const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/pjpeg', 'image/jfif', 'image/webp', 'image/gif'];
     if (!allowedMimeTypes.includes(file.mimetype)) {
-      throw new BadRequestException('Formato de imagen no permitido. Usa PNG, JPG, JPEG, WEBP o GIF');
+      throw new BadRequestException('Formato de imagen no permitido. Usa PNG, JPG, JFIF, WEBP o GIF');
     }
     const maxImageSize = 5 * 1024 * 1024;
     if (file.size > maxImageSize) {

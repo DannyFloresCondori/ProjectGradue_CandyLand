@@ -1,6 +1,6 @@
 import type { FC } from 'react'
 import { useState } from 'react'
-import { MagnifyingGlassIcon, TagIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, TagIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { Product, Category } from '@/types'
 import { PromotionBadge } from './PromotionBadge'
@@ -9,10 +9,11 @@ interface ProductCatalogProps {
   products: Product[]
   categories: Category[]
   onAddProduct: (productId: string) => void
+  className?: string
 }
 
 /** Reusable left panel for POS modals: category pills + search + product grid. */
-export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, onAddProduct }) => {
+export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, onAddProduct, className }) => {
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
 
@@ -23,7 +24,7 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
   })
 
   return (
-    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col border-b border-gray-100 md:w-[58%] md:flex-none md:border-b-0 md:border-r">
+    <div className={cn('flex min-h-0 w-full min-w-0 flex-1 flex-col border-b border-gray-100 md:w-[58%] md:flex-none md:border-b-0 md:border-r', className)}>
       {/* Search + Category filters */}
       <div className="border-b border-gray-100 px-4 pt-3 pb-2 space-y-2 shrink-0">
         <div className="relative">
@@ -33,8 +34,19 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Buscar producto..."
-            className="h-8 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            className="h-8 w-full rounded-md border border-gray-300 bg-white pl-9 pr-9 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              aria-label="Limpiar búsqueda"
+              title="Limpiar búsqueda"
+              className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            >
+              <XMarkIcon className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
           <button
@@ -75,7 +87,8 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
         ) : (
             <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-3">
             {filtered.map(p => {
-              const outOfStock = p.stock === 0
+              const displayStock = p.displayStock ?? p.stock
+              const outOfStock = displayStock <= 0
               const lowStock = p.stock > 0 && p.stock <= p.minStock
               const today = new Date().toISOString().slice(0, 10)
               const promotionIsCurrent = Boolean(
@@ -122,7 +135,7 @@ export const ProductCatalog: FC<ProductCatalogProps> = ({ products, categories, 
                       <PromotionBadge promotion={p.promotion} compact />
                     </div>
                   )}
-                  <p className="mt-0.5 text-[10px] text-gray-400">Stock: {p.stock}</p>
+                  <p className="mt-0.5 text-[10px] text-gray-400">Stock: {displayStock}</p>
                 </button>
               )
             })}

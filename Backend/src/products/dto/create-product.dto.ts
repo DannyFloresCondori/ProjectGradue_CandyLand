@@ -13,9 +13,11 @@ import {
   Matches,
   Min,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateProductDto {
 
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString()
   @IsNotEmpty({ message: 'El nombre del producto es obligatorio' })
   @Length(2, 100)

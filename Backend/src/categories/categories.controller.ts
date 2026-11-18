@@ -19,6 +19,12 @@ export class CategoriesController {
     return this.categoriesService.findAll();
   }
 
+  @AllowRoles('admin')
+  @Get('management/all')
+  findAllIncludingInactive() {
+    return this.categoriesService.findAllIncludingInactive();
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.categoriesService.findOne(id);
@@ -28,6 +34,12 @@ export class CategoriesController {
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() updateCategoryDto: UpdateCategoryDto) {
     return this.categoriesService.update(id, updateCategoryDto);
+  }
+
+  @AllowRoles('admin')
+  @Patch(':id/reactivate')
+  reactivate(@Param('id', ParseUUIDPipe) id: string) {
+    return this.categoriesService.reactivate(id);
   }
 
   @AllowRoles('admin')

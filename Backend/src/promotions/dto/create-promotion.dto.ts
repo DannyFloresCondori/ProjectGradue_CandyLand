@@ -12,10 +12,12 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 import { PromotionType } from '../entities/promotion.entity';
 
 export class CreatePromotionDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString()
   @IsNotEmpty({ message: 'Promotion name is required'})
   @MaxLength(50)

@@ -12,7 +12,8 @@ import { PlusIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { showSuccessAlert } from "@/lib/alerts";
+import { confirmReactivate, showSuccessAlert } from "@/lib/alerts";
+import { areCatalogNamesSimilar, normalizeUniqueName } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 const schema = z.object({
@@ -52,6 +53,15 @@ export const CategoriesPage: FC = () => {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const reactivateMut = useMutation({
+    mutationFn: (id: string) => categoryService.reactivate(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categories"] });
+      showSuccessAlert("Categoría activada correctamente");
+      closeModal();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const updateMut = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       categoryService.update(id, name),
@@ -72,7 +82,7 @@ export const CategoriesPage: FC = () => {
   });
 
   const openCreate = () => {
-    reset();
+    reset({ name: "" });
     setEditingId(null);
     setIsOpen(true);
   };
@@ -84,12 +94,38 @@ export const CategoriesPage: FC = () => {
   const closeModal = () => {
     setIsOpen(false);
     setEditingId(null);
-    reset();
+    reset({ name: "" });
   };
 
-  const onSubmit = (data: FormData) => {
-    if (editingId) updateMut.mutate({ id: editingId, name: data.name });
-    else createMut.mutate(data);
+  const onSubmit = async (data: FormData) => {
+    if (editingId) {
+      updateMut.mutate({ id: editingId, name: data.name });
+      return;
+    }
+
+    try {
+      const allCategories = await categoryService.getAllIncludingInactive();
+      const duplicateActive = allCategories.some(
+        (category) => category.isActive && normalizeUniqueName(category.name) === normalizeUniqueName(data.name),
+      );
+      if (duplicateActive) {
+        toast.error("Esta categoría ya está registrada");
+        return;
+      }
+
+      const inactiveCategory = allCategories.find(
+        (category) => !category.isActive && areCatalogNamesSimilar(category.name, data.name),
+      );
+      if (inactiveCategory) {
+        if (await confirmReactivate("categoría", inactiveCategory.name)) {
+          reactivateMut.mutate(inactiveCategory.id);
+        }
+        return;
+      }
+      createMut.mutate(data);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo verificar la categoría");
+    }
   };
 
   if (isLoading) return <PageSpinner />;
@@ -168,7 +204,7 @@ export const CategoriesPage: FC = () => {
             <Button type="button" variant="secondary" onClick={closeModal}>
               Cancelar
             </Button>
-            <Button type="submit" isLoading={isSubmitting}>
+            <Button type="submit" isLoading={isSubmitting || createMut.isPending || reactivateMut.isPending}>
               {editingId ? "Guardar" : "Crear"}
             </Button>
           </div>

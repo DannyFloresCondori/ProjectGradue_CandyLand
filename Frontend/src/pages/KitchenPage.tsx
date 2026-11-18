@@ -1,5 +1,6 @@
 import { useEffect, useState, type FC } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { orderService } from '@/services/orderService'
 import { saleService } from '@/services/saleService'
 import { Button } from '@/components/ui/Button'
@@ -16,9 +17,9 @@ import {
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/utils'
 import { formatStockReturnMessage } from '@/lib/stockMessage'
-import { confirmAction, showSuccessAlert } from '@/lib/alerts'
+import { confirmAction, requestCancellationReason, showSuccessAlert, showSuccessToast } from '@/lib/alerts'
 import { useAuthStore } from '@/stores/authStore'
-import type { Order, OrderStatus, PaymentType } from '@/types'
+import type { Order, OrderStatus, PaymentType, Sale } from '@/types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -213,6 +214,7 @@ const KitchenCard: FC<{
 
 export const KitchenPage: FC = () => {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const { user, hasRole } = useAuthStore()
   const canDeliverOrders = hasRole(['admin', 'cajero'])
   const [clock, setClock] = useState(() => Date.now())
@@ -248,10 +250,13 @@ export const KitchenPage: FC = () => {
   })
 
   const cancelMut = useMutation({
-    mutationFn: (order: Order) => orderService.cancel(order.id),
-    onSuccess: (_, order) => {
+    mutationFn: ({ order, reason }: { order: Order; reason?: string }) => orderService.cancel(order.id, reason),
+    onSuccess: (_, { order }) => {
       qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
       qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['sales'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-sales'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-metrics'] })
       qc.invalidateQueries({ queryKey: ['pending-orders'] })
       qc.invalidateQueries({ queryKey: ['products'] })
       qc.invalidateQueries({ queryKey: ['products-active'] })
@@ -262,28 +267,48 @@ export const KitchenPage: FC = () => {
   })
 
   const handleCancelScheduledOrder = async (order: Order) => {
+    if (order.isPaid) {
+      const reason = await requestCancellationReason(
+        '¿Cancelar pedido pagado?',
+        `Pedido #${order.id.slice(-6).toUpperCase()}. La venta asociada se anulará y el stock reservado será restituido.`,
+      )
+      if (!reason) return
+      cancelMut.mutate({ order, reason })
+      if (expiredReminder?.id === order.id) setExpiredReminder(null)
+      return
+    }
+
     const confirmed = await confirmAction(
       '¿Cancelar pedido programado?',
       `Pedido #${order.id.slice(-6).toUpperCase()}. El stock reservado será restituido.`,
       'Sí, cancelar pedido',
     )
     if (!confirmed) return
-    cancelMut.mutate(order)
+    cancelMut.mutate({ order })
     if (expiredReminder?.id === order.id) setExpiredReminder(null)
   }
 
   const deliverMut = useMutation({
-    mutationFn: ({ order, paymentType }: { order: Order; paymentType: PaymentType }) => saleService.create({
-      orderId: order.id,
-      customerId: order.customerId,
-      paymentType,
-      details: order.details.map((detail) => ({
-        productId: detail.productId,
-        quantity: detail.quantity,
-        toppingIds: detail.toppings.map((t) => t.toppingId),
-      })),
-    }, user?.id ?? ''),
-    onSuccess: () => {
+    mutationFn: async ({ order, paymentType }: { order: Order; paymentType: PaymentType }): Promise<Sale> => {
+      if (order.isPaid) {
+        await orderService.updateStatus(order.id, 'delivered')
+        const sale = (await saleService.getAll()).find((item) => item.orderId === order.id)
+        if (!sale) throw new Error('No se encontró la venta asociada a este pedido')
+        return sale
+      }
+
+      return saleService.create({
+        orderId: order.id,
+        customerId: order.customerId,
+        paymentType,
+        details: order.details.map((detail) => ({
+          productId: detail.productId,
+          quantity: detail.quantity,
+          toppingIds: detail.toppings.map((t) => t.toppingId),
+        })),
+      }, user?.id ?? '')
+    },
+    onSuccess: (sale) => {
       qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
       qc.invalidateQueries({ queryKey: ['orders'] })
       qc.invalidateQueries({ queryKey: ['sales'] })
@@ -296,7 +321,7 @@ export const KitchenPage: FC = () => {
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: ['active-alerts'] })
       setDeliveryDraft({ order: null, paymentType: 'cash' })
-      showSuccessAlert('Venta registrada correctamente', 'Pedido entregado con la fecha de entrega.')
+      navigate('/ventas', { state: { openSaleTicketId: sale.id } })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -310,7 +335,7 @@ export const KitchenPage: FC = () => {
 
       const targetOrder = orders.find((order) => order.id === id)
       if (targetOrder) {
-        setDeliveryDraft({ order: targetOrder, paymentType: 'cash' })
+        setDeliveryDraft({ order: targetOrder, paymentType: targetOrder.paymentType ?? 'cash' })
       }
       return
     }
@@ -608,20 +633,28 @@ export const KitchenPage: FC = () => {
         size="sm"
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Seleccione el método de pago para registrar la venta y cerrar el pedido.
-          </p>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Método de pago</label>
-            <select
-              value={deliveryDraft.paymentType}
-              onChange={(event) => setDeliveryDraft((current) => ({ ...current, paymentType: event.target.value as PaymentType }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500"
-            >
-              <option value="cash">Efectivo</option>
-              <option value="qr">QR</option>
-            </select>
-          </div>
+          {deliveryDraft.order?.isPaid ? (
+            <p className="text-sm text-gray-600">
+              Este pedido ya está pagado por {deliveryDraft.order.paymentType === 'qr' ? 'QR' : 'efectivo'}. Confirme la entrega.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600">
+                Seleccione el método de pago para registrar la venta y cerrar el pedido.
+              </p>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Método de pago</label>
+                <select
+                  value={deliveryDraft.paymentType}
+                  onChange={(event) => setDeliveryDraft((current) => ({ ...current, paymentType: event.target.value as PaymentType }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500"
+                >
+                  <option value="cash">Efectivo</option>
+                  <option value="qr">QR</option>
+                </select>
+              </div>
+            </>
+          )}
           <div className="flex justify-end gap-3">
             <Button variant="secondary" size="lg" className="px-8" onClick={() => setDeliveryDraft({ order: null, paymentType: 'cash' })}>
               Cancelar

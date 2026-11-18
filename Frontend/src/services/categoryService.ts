@@ -19,6 +19,15 @@ export const categoryService = {
     }
   },
 
+  async getAllIncludingInactive(): Promise<Category[]> {
+    try {
+      const { data } = await apiClient.get('/categories/management/all')
+      return (Array.isArray(data) ? data : []).map(normalizeCategory)
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
   async getActive(): Promise<Category[]> {
     return categoryService.getAll()
   },
@@ -26,6 +35,15 @@ export const categoryService = {
   async create(name: string): Promise<Category> {
     try {
       const { data } = await apiClient.post('/categories', { name })
+      return normalizeCategory(data)
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async reactivate(id: string): Promise<Category> {
+    try {
+      const { data } = await apiClient.patch(`/categories/${id}/reactivate`)
       return normalizeCategory(data)
     } catch (error) {
       throw new Error(getErrorMessage(error))

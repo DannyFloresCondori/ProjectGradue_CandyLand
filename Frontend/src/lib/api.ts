@@ -1,8 +1,8 @@
 import axios, { AxiosHeaders } from 'axios'
 
 const localApiUrl = typeof window !== 'undefined'
-  ? `http://${window.location.hostname}:3002/api/v1`
-  : 'http://localhost:3002/api/v1'
+  ? `http://${window.location.hostname}:3001/api/v1`
+  : 'http://localhost:3001/api/v1'
 const baseURL = import.meta.env.VITE_API_URL || localApiUrl
 
 export const apiClient = axios.create({

@@ -20,7 +20,9 @@
 }
 
 @layer base {
-  *, *::before, *::after { box-sizing: border-box; }
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
 
   html {
     font-family: var(--font-sans);
@@ -33,9 +35,17 @@
     overflow-x: hidden;
   }
 
-  h1 { @apply text-2xl font-semibold text-gray-900; }
-  h2 { @apply text-xl font-semibold text-gray-900; }
-  h3 { @apply text-lg font-medium text-gray-900; }
+  h1 {
+    @apply text-2xl font-semibold text-gray-900;
+  }
+
+  h2 {
+    @apply text-xl font-semibold text-gray-900;
+  }
+
+  h3 {
+    @apply text-lg font-medium text-gray-900;
+  }
 }
 
 @layer utilities {
@@ -43,7 +53,29 @@
     scrollbar-width: thin;
     scrollbar-color: #d1d5db transparent;
   }
-  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
-  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-  .scrollbar-thin::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 9999px;
+  }
+}
+
+/* Ocultar las flechas nativas de los campos numéricos */
+.quantity-input::-webkit-inner-spin-button,
+.quantity-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.quantity-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
 }

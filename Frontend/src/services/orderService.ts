@@ -14,6 +14,12 @@ export function normalizeOrder(item: any): Order {
   const deliveryAddress = item.delivery_address ?? item.deliveryAddress ?? item.client?.address ?? item.client?.direction ?? item.address ?? null
   const scheduledAt = item.scheduled_at ?? item.scheduledAt ?? item.delivery_date ?? item.deliveryDate ?? null
   const normalizedStatus = String(item.status ?? 'pending').toLowerCase()
+  const rawPaymentType = item.paymentType ?? item.sale?.payment_method ?? item.payment_method
+  const normalizedPaymentType = rawPaymentType === 'qr' || rawPaymentType === 'in_qr'
+    ? 'qr'
+    : rawPaymentType === 'cash' || rawPaymentType === 'in_efective'
+      ? 'cash'
+      : null
   const safeStatus: Order['status'] = ['pending', 'preparing', 'ready', 'delivered', 'cancelled'].includes(normalizedStatus)
     ? normalizedStatus as Order['status']
     : 'pending'
@@ -27,6 +33,9 @@ export function normalizeOrder(item: any): Order {
     customerPhone,
     orderType: type === 'scheduled' ? 'scheduled' : 'delivery',
     status: safeStatus,
+    stockReserved: Boolean(item.stockReserved ?? item.stock_reserved ?? type === 'delivery'),
+    isPaid: Boolean(item.isPaid ?? (item.sale?.status === 'delivered')),
+    paymentType: normalizedPaymentType,
     deliveryAddress,
     scheduledAt,
     total: Number(item.total ?? 0),
@@ -93,6 +102,7 @@ export const orderService = {
         scheduledAt: normalizeScheduledAt(input.scheduledAt),
         scheduled_at: normalizeScheduledAt(input.scheduledAt),
         notes: input.notes,
+        paymentType: input.paymentType,
         details: input.details.map((d) => ({
           productId: d.productId,
           quantity: d.quantity,
@@ -142,9 +152,9 @@ export const orderService = {
     }
   },
 
-  async cancel(id: string): Promise<any> {
+  async cancel(id: string, reason?: string): Promise<any> {
     try {
-      const { data } = await apiClient.delete(`/orders/${id}`)
+      const { data } = await apiClient.delete(`/orders/${id}`, { data: { reason } })
       return data
     } catch (error) {
       throw new Error(getErrorMessage(error))

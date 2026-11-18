@@ -12,7 +12,7 @@ function normalizeRoleName(roleValue: unknown): AuthUser['role'] {
     if (normalized === 'admin' || normalized.includes('administrador')) return 'admin'
     if (normalized === 'inventario') return 'inventario'
     if (normalized === 'cajero' || normalized.includes('cajero')) return 'cajero'
-    if (normalized === 'cocina' || normalized.includes('cocina')) return 'cocina'
+    if (normalized === 'cocina' || normalized.includes('cocina') || normalized.includes('cocinero')) return 'cocina'
 
     return trimmed as AuthUser['role']
   }

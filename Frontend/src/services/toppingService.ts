@@ -19,6 +19,15 @@ export const toppingService = {
     }
   },
 
+  async getAllIncludingInactive(): Promise<Topping[]> {
+    try {
+      const { data } = await apiClient.get('/topping/management/all')
+      return (Array.isArray(data) ? data : []).map(normalizeTopping)
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
   async getActive(): Promise<Topping[]> {
     const toppings = await toppingService.getAll()
     return toppings.filter((t) => t.isActive)
@@ -27,6 +36,15 @@ export const toppingService = {
   async create(name: string): Promise<Topping> {
     try {
       const { data } = await apiClient.post('/topping', { name })
+      return normalizeTopping(data)
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async reactivate(id: string): Promise<Topping> {
+    try {
+      const { data } = await apiClient.patch(`/topping/${id}/reactivate`)
       return normalizeTopping(data)
     } catch (error) {
       throw new Error(getErrorMessage(error))

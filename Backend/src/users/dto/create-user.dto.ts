@@ -16,7 +16,7 @@ export class CreateUserDto {
 
   @IsString()
   @IsNotEmpty({ message: 'El nombre del usuario es obligatorio'})
-  @Length(2, 20)
+  @Length(2, 30)
   @Matches(/^[\p{L}][\p{L}\s.'-]*$/u, { message: 'El nombre solo puede contener letras' })
   name!: string;
 

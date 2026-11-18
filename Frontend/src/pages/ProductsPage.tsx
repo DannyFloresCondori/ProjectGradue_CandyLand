@@ -21,11 +21,12 @@ import {
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { showSuccessAlert } from "@/lib/alerts";
+import { confirmReactivate, showSuccessAlert } from "@/lib/alerts";
+import { areCatalogNamesSimilar } from "@/lib/utils";
 import toast from "react-hot-toast";
 import type { Product } from "@/types";
 
-const allowedImageTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
+const allowedImageTypes = ["image/png", "image/jpeg", "image/jpg", "image/pjpeg", "image/jfif", "image/webp", "image/gif"];
 const maxImageSize = 5 * 1024 * 1024;
 
 const numericField = (message: string, allowDecimal = false, integer = false) =>
@@ -65,7 +66,7 @@ const schema = z.object({
     .optional()
     .refine(
       (files) => !files?.length || allowedImageTypes.includes(files[0]?.type),
-      "Formato no permitido. Usa PNG, JPG, JPEG, WEBP o GIF.",
+      "Formato no permitido. Usa PNG, JPG, JFIF, WEBP o GIF.",
     )
     .refine(
       (files) => !files?.length || files[0]?.size <= maxImageSize,
@@ -133,6 +134,20 @@ export const ProductsPage: FC = () => {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const reactivateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: FormData }) => {
+      const activated = await productService.reactivate(id, data);
+      const file = data.imageFile?.[0];
+      if (file) await productService.uploadImage(id, file);
+      return activated;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["products"] });
+      showSuccessAlert("Producto activado correctamente");
+      closeModal();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: FormData }) => {
       const updated = await productService.update(id, data);
@@ -157,7 +172,16 @@ export const ProductsPage: FC = () => {
   });
 
   const openCreate = () => {
-    reset({ toppingIds: [] });
+    reset({
+      name: "",
+      categoryId: "",
+      description: "",
+      imageFile: undefined,
+      price: undefined,
+      stock: undefined,
+      minStock: undefined,
+      toppingIds: [],
+    });
     setEditing(null);
     setIsOpen(true);
   };
@@ -177,17 +201,52 @@ export const ProductsPage: FC = () => {
   const closeModal = () => {
     setIsOpen(false);
     setEditing(null);
-    reset();
+    reset({
+      name: "",
+      categoryId: "",
+      description: "",
+      imageFile: undefined,
+      price: undefined,
+      stock: undefined,
+      minStock: undefined,
+      toppingIds: [],
+    });
   };
 
-  const onSubmit: SubmitHandler<FormData> = (data) => {
+  const onSubmit: SubmitHandler<FormData> = async (data) => {
     if (!editing && !selectedImageFile) {
       toast.error("Debes seleccionar una imagen para el producto.");
       return;
     }
 
-    if (editing) updateMutation.mutate({ id: editing.id, data });
-    else createMutation.mutate(data);
+    if (editing) {
+      updateMutation.mutate({ id: editing.id, data });
+      return;
+    }
+
+    try {
+      const allProducts = await productService.getAllIncludingInactive();
+      const duplicateActive = allProducts.some(
+        (product) => product.isActive && areCatalogNamesSimilar(product.name, data.name),
+      );
+      if (duplicateActive) {
+        toast.error("Ya existe un producto con ese nombre");
+        return;
+      }
+
+      const inactiveProduct = allProducts.find(
+        (product) => !product.isActive && areCatalogNamesSimilar(product.name, data.name),
+      );
+      if (inactiveProduct) {
+        if (await confirmReactivate("producto", inactiveProduct.name)) {
+          reactivateMutation.mutate({ id: inactiveProduct.id, data });
+        }
+        return;
+      }
+      createMutation.mutate(data);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo verificar el producto");
+    }
   };
 
   const toggleTopping = (id: string) => {
@@ -198,9 +257,24 @@ export const ProductsPage: FC = () => {
     );
   };
 
+  const allToppingsSelected =
+    toppings.length > 0 &&
+    toppings.every((topping) => selectedToppings.includes(topping.id));
+
+  const toggleAllToppings = () => {
+    setValue(
+      "toppingIds",
+      allToppingsSelected ? [] : toppings.map((topping) => topping.id),
+    );
+  };
+
   const normalizedSearch = search.trim().toLowerCase();
 
-  const filtered = products.filter((p) => {
+  const newestFirst = [...products].sort(
+    (first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime(),
+  );
+
+  const filtered = newestFirst.filter((p) => {
     const name = p.name.toLowerCase();
     const categoryName = p.category?.name?.toLowerCase() ?? "";
     const description = p.description?.toLowerCase() ?? "";
@@ -372,11 +446,11 @@ export const ProductsPage: FC = () => {
           />
           <div className="col-span-2">
             <label className="text-sm font-medium text-gray-700 block mb-1">
-              Imagen <span className="text-red-500">*</span>
+              Imagen 
             </label>
             <input
               type="file"
-              accept=".png,.jpg,.jpeg,.webp,.gif"
+              accept=".png,.jpg,.jpeg,.jfif,.webp,.gif"
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
               {...register("imageFile")}
             />
@@ -413,9 +487,20 @@ export const ProductsPage: FC = () => {
           </div>
           {toppings.length > 0 && (
             <div className="col-span-2">
-              <p className="text-sm font-medium text-gray-700 mb-2">
-                Toppings disponibles
-              </p>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-gray-700">
+                  Toppings disponibles
+                </p>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={allToppingsSelected}
+                    onChange={toggleAllToppings}
+                    className="h-4 w-4 rounded border-gray-300 accent-primary-500"
+                  />
+                  <span>Seleccionar todos los toppings</span>
+                </label>
+              </div>
               <div className="flex flex-wrap gap-2">
                 {toppings.map((t) => (
                   <button
@@ -438,7 +523,7 @@ export const ProductsPage: FC = () => {
             <Button type="button" variant="secondary" onClick={closeModal}>
               Cancelar
             </Button>
-            <Button type="submit" isLoading={isSubmitting}>
+            <Button type="submit" isLoading={isSubmitting || createMutation.isPending || reactivateMutation.isPending}>
               {editing ? "Guardar cambios" : "Crear producto"}
             </Button>
           </div>

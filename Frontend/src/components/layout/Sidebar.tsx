@@ -41,7 +41,8 @@ function isAdminRole(role?: string): boolean {
 }
 
 function isKitchenRole(role?: string): boolean {
-  return role?.toLowerCase() === 'cocina' || role?.toLowerCase().includes('cocina') === true
+  const normalized = role?.toLowerCase() ?? ''
+  return normalized.includes('cocina') || normalized.includes('cocinero')
 }
 
 export const Sidebar: FC = () => {

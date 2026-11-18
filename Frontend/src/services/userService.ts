@@ -48,14 +48,13 @@ export const userService = {
 
   async update(id: string, input: Partial<UserInput>): Promise<User> {
     try {
-      const payload: Record<string, unknown> = {
-        roleId: input.roleId,
-      }
+      const payload: Record<string, unknown> = {}
 
+      if (input.roleId) payload.roleId = input.roleId
       if (input.name) payload.name = input.name
-      if (input.password) payload.password = input.password
-      if (input.email?.trim()) payload.email = input.email.trim()
-      if (input.phone?.trim()) payload.phone = input.phone.trim()
+      if (input.password?.trim()) payload.password = input.password
+      if (input.email !== undefined) payload.email = input.email.trim() || null
+      if (input.phone !== undefined) payload.phone = input.phone.trim() || null
 
       const { data } = await apiClient.patch(`/users/${id}`, payload)
       return normalizeUser(data)

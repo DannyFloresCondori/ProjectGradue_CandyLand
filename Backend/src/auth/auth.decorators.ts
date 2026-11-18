@@ -10,7 +10,7 @@ export type RoleGroup = 'admin' | 'staff' | 'kitchen';
 export function roleGroupOf(roleName?: string | null): RoleGroup {
   const normalized = (roleName ?? '').trim().toLowerCase();
   if (normalized === 'admin' || normalized.includes('administrador')) return 'admin';
-  if (normalized.includes('cocina')) return 'kitchen';
+  if (normalized.includes('cocina') || normalized.includes('cocinero')) return 'kitchen';
   return 'staff';
 }
 

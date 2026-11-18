@@ -9,6 +9,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Promotion, PromotionType } from './entities/promotion.entity';
 import { In, Repository } from 'typeorm';
 import { Product } from 'src/products/entities/product.entity';
+import { ensureNameIsAvailable, saveWithUniqueNameConstraint } from 'src/common/normalized-name';
+
+const DUPLICATE_PROMOTION_MESSAGE = 'Ya existe una promoción con ese nombre';
 
 @Injectable()
 export class PromotionsService {
@@ -63,19 +66,11 @@ export class PromotionsService {
 
   async create(createPromotionDto: CreatePromotionDto) {
     this.validatePromotionDates(createPromotionDto.start_date, createPromotionDto.end_date);
-    
+
     const { productIds, type, value, isActive, ...promotionData } =
       createPromotionDto;
-
-    const existingPromotion = await this.promotionRepository.findOne({
-      where: { name: promotionData.name },
-    });
-
-    if (existingPromotion) {
-      throw new BadRequestException(
-        `Promotion with name "${promotionData.name}" already exists`,
-      );
-    }
+    const name = promotionData.name.trim();
+    await ensureNameIsAvailable(this.promotionRepository, name, DUPLICATE_PROMOTION_MESSAGE);
 
     const products = await this.productRepository.find({
       where: {
@@ -91,6 +86,7 @@ export class PromotionsService {
 
     const newPromotion = this.promotionRepository.create({
       ...promotionData,
+      name,
       type,
       value,
       is_active: isActive ?? true,
@@ -100,8 +96,11 @@ export class PromotionsService {
       newPromotion.value = 50;
     }
 
-    const savedPromotion =
-      await this.promotionRepository.save(newPromotion);
+    const savedPromotion = await saveWithUniqueNameConstraint(
+      this.promotionRepository,
+      newPromotion,
+      DUPLICATE_PROMOTION_MESSAGE,
+    );
 
     await this.syncPromotionStatus(savedPromotion);
 
@@ -196,18 +195,10 @@ async update(
   const { productIds, type, value, isActive, ...data } =
     updatePromotionDto;
 
-  // Verificar nombre duplicado
-  if (data.name && data.name !== promotion.name) {
-    const existingPromotion =
-      await this.promotionRepository.findOne({
-        where: { name: data.name },
-      });
-
-    if (existingPromotion) {
-      throw new BadRequestException(
-        `Promotion with name "${data.name}" already exists`,
-      );
-    }
+  const name = data.name?.trim();
+  if (name !== undefined) {
+    await ensureNameIsAvailable(this.promotionRepository, name, DUPLICATE_PROMOTION_MESSAGE, id);
+    data.name = name;
   }
 
   // Actualizar datos básicos
@@ -227,8 +218,11 @@ async update(
     }
   }
 
-  const savedPromotion =
-    await this.promotionRepository.save(promotion);
+  const savedPromotion = await saveWithUniqueNameConstraint(
+    this.promotionRepository,
+    promotion,
+    DUPLICATE_PROMOTION_MESSAGE,
+  );
 
   await this.syncPromotionStatus(savedPromotion);
 

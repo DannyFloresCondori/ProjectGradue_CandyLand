@@ -1,7 +1,7 @@
 import type { FC } from "react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { customerService } from "@/services/customerService";
+import { customerService, findCustomerDuplicateFields } from "@/services/customerService";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
@@ -38,7 +38,7 @@ const schema = z.object({
     .string()
     .regex(
       /^[67]\d{7}$/,
-      "Ingrese un número de teléfono boliviano válido de 8 dígitos.",
+      "Ingrese un número de teléfono válido de 8 dígitos.",
     ),
   address: z
     .string()
@@ -64,6 +64,8 @@ export const CustomersPage: FC = () => {
     register,
     handleSubmit,
     reset,
+    setError,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -76,7 +78,21 @@ export const CustomersPage: FC = () => {
       showSuccessAlert("Cliente registrado correctamente");
       closeModal();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: async (e: Error, data) => {
+      toast.error(e.message);
+      if (!/registrad|existe|duplicad|already exists|duplicate/i.test(e.message)) return;
+
+      const currentCustomers = await customerService.getAll().catch(() => customers);
+      const duplicates = findCustomerDuplicateFields(currentCustomers, data);
+      if (duplicates.ci) setError("ci", { type: "server", message: duplicates.ci });
+      else if (/\bci\b|cédula|cedula|documento/i.test(e.message)) {
+        setError("ci", { type: "server", message: e.message });
+      }
+      if (duplicates.phone) setError("phone", { type: "server", message: duplicates.phone });
+      else if (/tel[eé]fono|phone/i.test(e.message)) {
+        setError("phone", { type: "server", message: e.message });
+      }
+    },
   });
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: string; data: FormData }) =>
@@ -86,7 +102,21 @@ export const CustomersPage: FC = () => {
       showSuccessAlert("Cliente actualizado correctamente");
       closeModal();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: async (e: Error, { id, data }) => {
+      toast.error(e.message);
+      if (!/registrad|existe|duplicad|already exists|duplicate/i.test(e.message)) return;
+
+      const currentCustomers = await customerService.getAll().catch(() => customers);
+      const duplicates = findCustomerDuplicateFields(currentCustomers, data, id);
+      if (duplicates.ci) setError("ci", { type: "server", message: duplicates.ci });
+      else if (/\bci\b|cédula|cedula|documento/i.test(e.message)) {
+        setError("ci", { type: "server", message: e.message });
+      }
+      if (duplicates.phone) setError("phone", { type: "server", message: duplicates.phone });
+      else if (/tel[eé]fono|phone/i.test(e.message)) {
+        setError("phone", { type: "server", message: e.message });
+      }
+    },
   });
   const toggleMut = useMutation({
     mutationFn: (id: string) => customerService.toggleActive(id),
@@ -97,7 +127,7 @@ export const CustomersPage: FC = () => {
   });
 
   const openCreate = () => {
-    reset();
+    reset({ ci: "", fullName: "", phone: "", address: "" });
     setEditing(null);
     setIsOpen(true);
   };
@@ -114,7 +144,7 @@ export const CustomersPage: FC = () => {
   const closeModal = () => {
     setIsOpen(false);
     setEditing(null);
-    reset();
+    reset({ ci: "", fullName: "", phone: "", address: "" });
   };
   const onSubmit = (data: FormData) => {
     editing
@@ -249,7 +279,7 @@ export const CustomersPage: FC = () => {
           <Input
             label="CI (Cédula de Identidad)"
             placeholder="Ej: 7823456"
-            {...register("ci")}
+            {...register("ci", { onChange: () => clearErrors("ci") })}
             error={errors.ci?.message}
           />
           <Input
@@ -260,8 +290,8 @@ export const CustomersPage: FC = () => {
           />
           <Input
             label="Teléfono"
-            placeholder="Ej: 71234567"
-            {...register("phone")}
+            placeholder="Número de teléfono (8 dígitos)"
+            {...register("phone", { onChange: () => clearErrors("phone") })}
             error={errors.phone?.message}
           />
           <Input

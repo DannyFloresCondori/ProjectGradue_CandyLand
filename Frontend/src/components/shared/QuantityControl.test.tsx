@@ -41,4 +41,29 @@ describe('QuantityControl', () => {
 
     expect(onChange).toHaveBeenCalled()
   })
+
+  it('limita la cantidad al máximo y desactiva incrementar al alcanzarlo', async () => {
+    const user = userEvent.setup()
+    const onIncrease = vi.fn()
+    const onChange = vi.fn()
+    render(
+      <QuantityControl
+        value={50}
+        max={50}
+        onDecrease={() => {}}
+        onIncrease={onIncrease}
+        onChange={onChange}
+      />,
+    )
+
+    const input = screen.getByRole('spinbutton')
+    expect(input).toHaveAttribute('max', '50')
+    expect(screen.getByRole('button', { name: '+' })).toBeDisabled()
+
+    await user.clear(input)
+    await user.type(input, '60')
+
+    expect(onChange).toHaveBeenLastCalledWith(50)
+    expect(onIncrease).not.toHaveBeenCalled()
+  })
 })

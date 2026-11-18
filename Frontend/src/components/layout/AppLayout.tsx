@@ -10,21 +10,28 @@ export const AppLayout: FC = () => {
   const qc = useQueryClient()
 
   useEffect(() => {
-    const refreshOrders = () => {
+    const refreshOrderData = () => {
       qc.invalidateQueries({ queryKey: ['orders'] })
       qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
       qc.invalidateQueries({ queryKey: ['pending-orders'] })
+      qc.invalidateQueries({ queryKey: ['sales'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-sales'] })
       qc.invalidateQueries({ queryKey: ['dashboard-metrics'] })
+      qc.invalidateQueries({ queryKey: ['products'] })
+      qc.invalidateQueries({ queryKey: ['products-active'] })
+      qc.invalidateQueries({ queryKey: ['low-stock'] })
+      qc.invalidateQueries({ queryKey: ['alerts'] })
+      qc.invalidateQueries({ queryKey: ['active-alerts'] })
     }
 
-    ordersSocket.on('order.created', refreshOrders)
-    ordersSocket.on('order.updated', refreshOrders)
+    ordersSocket.on('order.created', refreshOrderData)
+    ordersSocket.on('order.updated', refreshOrderData)
     ordersSocket.connect()
     ordersSocket.emit('orders.subscribe')
 
     return () => {
-      ordersSocket.off('order.created', refreshOrders)
-      ordersSocket.off('order.updated', refreshOrders)
+      ordersSocket.off('order.created', refreshOrderData)
+      ordersSocket.off('order.updated', refreshOrderData)
       ordersSocket.disconnect()
     }
   }, [qc])

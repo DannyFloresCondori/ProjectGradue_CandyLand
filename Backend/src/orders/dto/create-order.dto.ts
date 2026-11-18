@@ -10,12 +10,22 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { OrderStatus, OrderType } from '../entities/order.entity';
+import { Payment_method } from 'src/sale/entities/sale.entity';
 import { CreateOrdersDetailDto } from 'src/orders_detail/dto/create-orders_detail.dto';
 import { CreateClientDto } from 'src/client/dto/create-client.dto';
 
 export class CreateOrderDto {
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === 'cash') return Payment_method.IN_EFECTIVE;
+    if (value === 'qr') return Payment_method.IN_QR;
+    return value;
+  })
+  @IsEnum(Payment_method)
+  paymentType?: Payment_method;
+
   @IsOptional()
   @ValidateNested()
   @Type(() => CreateClientDto)

@@ -66,6 +66,9 @@ export class Order {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   total!: number;
 
+  @Column({ type: 'boolean', default: true })
+  stock_reserved!: boolean;
+
   @Column({ type: 'text', nullable: true })
   notes?: string;
 

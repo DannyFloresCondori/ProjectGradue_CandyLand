@@ -14,7 +14,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { cn, formatRelativeTime, formatDateTime } from '@/lib/utils'
 import { formatStockReturnMessage } from '@/lib/stockMessage'
-import { confirmAction, showSuccessAlert } from '@/lib/alerts'
+import { confirmAction, requestCancellationReason, showSuccessAlert } from '@/lib/alerts'
 import type { Notification, Order } from '@/types'
 import LogoImg from '@/assets/Logo.jpeg'
 import toast from 'react-hot-toast'
@@ -303,9 +303,12 @@ export const Navbar: FC = () => {
   })
 
   const cancelOrderMut = useMutation({
-    mutationFn: (order: Order) => orderService.cancel(order.id),
-    onSuccess: (_, order) => {
+    mutationFn: ({ order, reason }: { order: Order; reason?: string }) => orderService.cancel(order.id, reason),
+    onSuccess: (_, { order }) => {
       qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['sales'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-sales'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-metrics'] })
       qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
       qc.invalidateQueries({ queryKey: ['products'] })
       qc.invalidateQueries({ queryKey: ['products-active'] })
@@ -323,12 +326,21 @@ export const Navbar: FC = () => {
     if (!id) return
     const order = scheduledOrders.find((item) => item.id === id)
     if (!order) return
+    if (order.isPaid) {
+      const reason = await requestCancellationReason(
+        '¿Cancelar pedido pagado?',
+        `Pedido #${id.slice(-6).toUpperCase()}. La venta asociada se anulará y el stock reservado será restituido.`,
+      )
+      if (reason) cancelOrderMut.mutate({ order, reason })
+      return
+    }
+
     const confirmed = await confirmAction(
       '¿Cancelar pedido programado?',
       `¿Está seguro de cancelar el pedido #${id.slice(-6).toUpperCase()}?`,
       'Sí, cancelar pedido',
     )
-    if (confirmed) cancelOrderMut.mutate(order)
+    if (confirmed) cancelOrderMut.mutate({ order })
   }
 
   // Close panels on click-outside and Escape

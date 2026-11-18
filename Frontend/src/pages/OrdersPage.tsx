@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/Input";
 import { Card, CardBody } from "@/components/ui/Card";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Pagination } from "@/components/ui/Pagination";
 import { CustomerSearch } from "@/components/shared/CustomerSearch";
 import { QuickCustomerModal } from "@/components/shared/QuickCustomerModal";
 import { ProductCatalog } from "@/components/shared/ProductCatalog";
@@ -34,7 +35,7 @@ import {
 } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 import { formatStockReturnMessage } from "@/lib/stockMessage";
-import { confirmAction, showSuccessAlert } from "@/lib/alerts";
+import { confirmAction, requestCancellationReason, showSuccessAlert } from "@/lib/alerts";
 import {
   PlusIcon,
   XMarkIcon,
@@ -54,6 +55,7 @@ import type {
   Customer,
   Product,
   Category,
+  PaymentType,
 } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +92,37 @@ interface CartItem {
   quantity: number;
   toppingIds: string[];
 }
+
+const getOrderItemPricing = (item: CartItem, product?: Product) => {
+  const originalTotal = item.unitPrice * item.quantity;
+  const promotion = product?.promotion;
+  if (!promotion) return { originalTotal, total: originalTotal };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const isCurrent = Boolean(
+    promotion.isActive &&
+    (!promotion.startDate || promotion.startDate.slice(0, 10) <= today) &&
+    (!promotion.endDate || promotion.endDate.slice(0, 10) >= today),
+  );
+  if (!isCurrent) return { originalTotal, total: originalTotal };
+
+  if (promotion.type === "discount") {
+    const discountPercent = Number(promotion.discountPercent ?? 0);
+    return {
+      originalTotal,
+      total: item.unitPrice * (1 - discountPercent / 100) * item.quantity,
+    };
+  }
+
+  if (promotion.type === "buy_one_get_one") {
+    return {
+      originalTotal,
+      total: item.unitPrice * Math.ceil(item.quantity / 2),
+    };
+  }
+
+  return { originalTotal, total: originalTotal };
+};
 
 // ─── OrderDetailView ──────────────────────────────────────────────────────────
 
@@ -206,11 +239,14 @@ export const OrdersPage: FC = () => {
   // List filters
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [search, setSearch] = useState("");
+  const [ordersPage, setOrdersPage] = useState(1);
+  const ordersPageSize = 8;
 
   // New order state
   const [isNewOpen, setIsNewOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<OrderType>("delivery");
+  const [paymentType, setPaymentType] = useState<PaymentType>("cash");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null,
   );
@@ -234,6 +270,7 @@ export const OrdersPage: FC = () => {
     useState<Customer | null>(null);
   const [editCustomerName, setEditCustomerName] = useState("");
   const [editCustomerPhone, setEditCustomerPhone] = useState("");
+  const [editCustomerPhoneError, setEditCustomerPhoneError] = useState<string | null>(null);
   const [editCustomerDataOpen, setEditCustomerDataOpen] = useState(false);
   const [editAddress, setEditAddress] = useState("");
   const [editScheduledAt, setEditScheduledAt] = useState("");
@@ -279,7 +316,7 @@ export const OrdersPage: FC = () => {
     () =>
       products.map((product) => ({
         ...product,
-        stock: stockMap[product.id] ?? product.stock,
+        displayStock: stockMap[product.id] ?? product.stock,
       })),
     [products, stockMap],
   );
@@ -303,6 +340,40 @@ export const OrdersPage: FC = () => {
     setStockMap(
       Object.fromEntries(baseProducts.map((product) => [product.id, product.stock])),
     );
+  };
+
+  const syncCartStockMap = (items: CartItem[]) => {
+    const quantities = new Map<string, number>();
+    items.forEach((item) => {
+      quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity);
+    });
+    setStockMap(Object.fromEntries(products.map((product) => [
+      product.id,
+      Math.max(0, product.stock - (quantities.get(product.id) ?? 0)),
+    ])));
+  };
+
+  const syncEditCartStockMap = (items: CartItem[]) => {
+    const originalReservations = new Map<string, number>();
+    if (editOrder?.stockReserved) {
+      editOrder.details.forEach((detail) => {
+        originalReservations.set(
+          detail.productId,
+          (originalReservations.get(detail.productId) ?? 0) + detail.quantity,
+        );
+      });
+    }
+    const editedQuantities = new Map<string, number>();
+    items.forEach((item) => {
+      editedQuantities.set(item.productId, (editedQuantities.get(item.productId) ?? 0) + item.quantity);
+    });
+    setStockMap(Object.fromEntries(products.map((product) => [
+      product.id,
+      Math.max(
+        0,
+        product.stock + (originalReservations.get(product.id) ?? 0) - (editedQuantities.get(product.id) ?? 0),
+      ),
+    ])));
   };
 
   // Filtered + searched orders
@@ -329,6 +400,24 @@ export const OrdersPage: FC = () => {
     });
   }, [orders, statusFilter, search]);
 
+  const paginatedOrders = useMemo(
+    () =>
+      filtered.slice(
+        (ordersPage - 1) * ordersPageSize,
+        ordersPage * ordersPageSize,
+      ),
+    [filtered, ordersPage],
+  );
+
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [statusFilter, search]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / ordersPageSize));
+    if (ordersPage > totalPages) setOrdersPage(totalPages);
+  }, [filtered.length, ordersPage]);
+
   // ─── Mutations ────────────────────────────────────────────────────────────
 
   const createMut = useMutation({
@@ -343,6 +432,7 @@ export const OrdersPage: FC = () => {
           deliveryAddress: address.trim() || null,
           scheduledAt: scheduledAt || null,
           notes: notes.trim() || null,
+          paymentType,
           details: cart.map(
             (i) =>
               ({
@@ -357,6 +447,8 @@ export const OrdersPage: FC = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-sales"] });
       qc.invalidateQueries({ queryKey: ["kitchen-orders"] });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["products-active"] });
@@ -371,11 +463,26 @@ export const OrdersPage: FC = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const handleCreateOrder = async () => {
+    if (!canSubmit || createMut.isPending) return;
+
+    const paymentLabel = paymentType === "cash" ? "efectivo" : "QR";
+    const confirmed = await confirmAction(
+      `¿Estás seguro de realizar el pedido en ${paymentLabel}?`,
+      `Total: ${formatCurrency(cartTotal)}`,
+      "Sí, realizar pedido",
+    );
+
+    if (confirmed) createMut.mutate();
+  };
+
   const advanceMut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
       orderService.updateStatus(id, status),
     onSuccess: (_, { status }) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-sales"] });
       qc.invalidateQueries({ queryKey: ["kitchen-orders"] });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["products-active"] });
@@ -391,9 +498,11 @@ export const OrdersPage: FC = () => {
   });
 
   const cancelMut = useMutation({
-    mutationFn: ({ order }: { order: Order }) => orderService.cancel(order.id),
+    mutationFn: ({ order, reason }: { order: Order; reason?: string }) => orderService.cancel(order.id, reason),
     onSuccess: (_, { order }) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-sales"] });
       qc.invalidateQueries({ queryKey: ["kitchen-orders"] });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["products-active"] });
@@ -408,6 +517,15 @@ export const OrdersPage: FC = () => {
   });
 
   const handleCancelOrder = async (order: Order) => {
+    if (order.isPaid) {
+      const reason = await requestCancellationReason(
+        "¿Cancelar pedido pagado?",
+        `Pedido #${order.id.slice(-6).toUpperCase()}. La venta asociada se anulará y el stock reservado será restituido.`,
+      );
+      if (reason) cancelMut.mutate({ order, reason });
+      return;
+    }
+
     const confirmed = await confirmAction(
       "¿Está seguro de cancelar el pedido?",
       `Pedido #${order.id.slice(-6).toUpperCase()}. El stock reservado será restituido.`,
@@ -432,7 +550,7 @@ export const OrdersPage: FC = () => {
           throw new Error("El nombre solo puede contener letras.");
         }
         if (phone && !/^[67]\d{7}$/.test(phone)) {
-          throw new Error("Ingrese un número de teléfono boliviano válido de 8 dígitos.");
+          throw new Error("Ingrese un número de teléfono válido de 8 dígitos.");
         }
 
         await customerService.update(editSelectedCustomer.id, {
@@ -472,13 +590,19 @@ export const OrdersPage: FC = () => {
       setEditSelectedCustomer(null);
       setEditCustomerName("");
       setEditCustomerPhone("");
+      setEditCustomerPhoneError(null);
       setEditCustomerDataOpen(false);
       setEditAddress("");
       setEditScheduledAt("");
       setEditScheduledError(null);
       setEditNotes("");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      if (/tel[eé]fono|phone/i.test(e.message)) {
+        setEditCustomerPhoneError(e.message);
+      }
+      toast.error(e.message);
+    },
   });
 
   // ─── Cart management ──────────────────────────────────────────────────────
@@ -516,20 +640,18 @@ export const OrdersPage: FC = () => {
     }
     const existing = cart.find((i) => i.productId === productId);
     if (existing) {
-      if (existing.quantity >= availableStock) {
-        toast.error(`Stock insuficiente (máx: ${availableStock})`);
+      if (existing.quantity >= 50) {
+        toast.error(`La cantidad máxima por producto es 50`);
         return;
       }
-      adjustStock(productId, -1);
-      setCart((c) =>
-        c.map((i) =>
-          i.productId === productId ? { ...i, quantity: i.quantity + 1 } : i,
-        ),
-      );
+      const updatedCart = cart.map((item) => item.productId === productId
+        ? { ...item, quantity: item.quantity + 1 }
+        : item);
+      setCart(updatedCart);
+      syncCartStockMap(updatedCart);
     } else {
-      adjustStock(productId, -1);
-      setCart((c) => [
-        ...c,
+      const updatedCart = [
+        ...cart,
         {
           productId,
           productName: prod.name,
@@ -537,16 +659,16 @@ export const OrdersPage: FC = () => {
           quantity: 1,
           toppingIds: [],
         },
-      ]);
+      ];
+      setCart(updatedCart);
+      syncCartStockMap(updatedCart);
     }
   };
 
   const removeFromCart = (productId: string) => {
-    const item = cart.find((i) => i.productId === productId);
-    if (item) {
-      adjustStock(productId, item.quantity);
-    }
-    setCart((c) => c.filter((i) => i.productId !== productId));
+    const updatedCart = cart.filter((item) => item.productId !== productId);
+    setCart(updatedCart);
+    syncCartStockMap(updatedCart);
   };
 
   const updateQty = (productId: string, qty: number) => {
@@ -556,6 +678,10 @@ export const OrdersPage: FC = () => {
       removeFromCart(productId);
       return;
     }
+    if (qty > 50) {
+      toast.error("La cantidad máxima por producto es 50");
+      return;
+    }
     const delta = qty - currentQty;
     if (delta > 0) {
       const availableStock = getDisplayStock(productId);
@@ -563,16 +689,16 @@ export const OrdersPage: FC = () => {
         toast.error(`Stock insuficiente (máx: ${availableStock})`);
         return;
       }
-      adjustStock(productId, -delta);
-    } else if (delta < 0) {
-      adjustStock(productId, -delta);
     }
-    setCart((c) =>
-      c.map((i) => (i.productId === productId ? { ...i, quantity: qty } : i)),
-    );
+    const updatedCart = cart.map((item) => item.productId === productId ? { ...item, quantity: qty } : item);
+    setCart(updatedCart);
+    syncCartStockMap(updatedCart);
   };
 
-  const cartTotal = cart.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const cartTotal = cart.reduce((sum, item) => {
+    const product = products.find((candidate) => candidate.id === item.productId);
+    return sum + getOrderItemPricing(item, product).total;
+  }, 0);
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -580,6 +706,7 @@ export const OrdersPage: FC = () => {
     setIsNewOpen(false);
     setCart([]);
     setOrderType("delivery");
+    setPaymentType("cash");
     setSelectedCustomer(null);
     setIsGeneralClient(false);
     setAddress("");
@@ -590,16 +717,18 @@ export const OrdersPage: FC = () => {
   };
 
   const openEditModal = (order: Order) => {
-    const initialStockMap = Object.fromEntries(
-      products.map((product: Product) => [product.id, product.stock]),
-    ) as Record<string, number>;
-
+    const originalQuantities = new Map<string, number>();
     order.details.forEach((detail) => {
-      const current = initialStockMap[detail.productId];
-      if (typeof current === "number") {
-        initialStockMap[detail.productId] = Math.max(0, current - detail.quantity);
-      }
+      originalQuantities.set(
+        detail.productId,
+        (originalQuantities.get(detail.productId) ?? 0) + detail.quantity,
+      );
     });
+    const initialStockMap = Object.fromEntries(products.map((product) => {
+      const originalQuantity = originalQuantities.get(product.id) ?? 0;
+      const stockToReturn = order.stockReserved ? originalQuantity : 0;
+      return [product.id, Math.max(0, product.stock + stockToReturn - originalQuantity)];
+    })) as Record<string, number>;
 
     setEditOrder(order);
     setEditCart(
@@ -626,6 +755,7 @@ export const OrdersPage: FC = () => {
     setEditSelectedCustomer(customer);
     setEditCustomerName(customer?.fullName ?? order.customerName ?? "");
     setEditCustomerPhone(customer?.phone ?? order.customerPhone ?? "");
+    setEditCustomerPhoneError(null);
     setEditCustomerDataOpen(false);
     setEditAddress(order.deliveryAddress ?? "");
     setEditScheduledAt(formatDateTimeInput(order.scheduledAt));
@@ -641,6 +771,7 @@ export const OrdersPage: FC = () => {
     setEditSelectedCustomer(null);
     setEditCustomerName("");
     setEditCustomerPhone("");
+    setEditCustomerPhoneError(null);
     setEditCustomerDataOpen(false);
     setEditAddress("");
     setEditScheduledAt("");
@@ -666,10 +797,10 @@ export const OrdersPage: FC = () => {
   const editNeedsAddress =
     editOrderType === "delivery" || editOrderType === "scheduled";
   const editNeedsDate = editOrderType === "scheduled";
-  const editCartTotal = editCart.reduce(
-    (sum, i) => sum + i.unitPrice * i.quantity,
-    0,
-  );
+  const editCartTotal = editCart.reduce((sum, item) => {
+    const product = products.find((candidate) => candidate.id === item.productId);
+    return sum + getOrderItemPricing(item, product).total;
+  }, 0);
 
   const handleEditScheduledChange = (value: string) => {
     setEditScheduledAt(value);
@@ -709,20 +840,18 @@ export const OrdersPage: FC = () => {
     }
     const existing = editCart.find((i) => i.productId === productId);
     if (existing) {
-      if (existing.quantity >= availableStock) {
-        toast.error(`Stock insuficiente (máx: ${availableStock})`);
+      if (existing.quantity >= 50) {
+        toast.error("La cantidad máxima por producto es 50");
         return;
       }
-      adjustStock(productId, -1);
-      setEditCart((c) =>
-        c.map((i) =>
-          i.productId === productId ? { ...i, quantity: i.quantity + 1 } : i,
-        ),
-      );
+      const updatedCart = editCart.map((item) => item.productId === productId
+        ? { ...item, quantity: item.quantity + 1 }
+        : item);
+      setEditCart(updatedCart);
+      syncEditCartStockMap(updatedCart);
     } else {
-      adjustStock(productId, -1);
-      setEditCart((c) => [
-        ...c,
+      const updatedCart = [
+        ...editCart,
         {
           productId,
           productName: prod.name,
@@ -730,16 +859,16 @@ export const OrdersPage: FC = () => {
           quantity: 1,
           toppingIds: [],
         },
-      ]);
+      ];
+      setEditCart(updatedCart);
+      syncEditCartStockMap(updatedCart);
     }
   };
 
   const editRemoveFromCart = (productId: string) => {
-    const item = editCart.find((i) => i.productId === productId);
-    if (item) {
-      adjustStock(productId, item.quantity);
-    }
-    setEditCart((c) => c.filter((i) => i.productId !== productId));
+    const updatedCart = editCart.filter((item) => item.productId !== productId);
+    setEditCart(updatedCart);
+    syncEditCartStockMap(updatedCart);
   };
 
   const editUpdateQty = (productId: string, qty: number) => {
@@ -749,6 +878,10 @@ export const OrdersPage: FC = () => {
       editRemoveFromCart(productId);
       return;
     }
+    if (qty > 50) {
+      toast.error("La cantidad máxima por producto es 50");
+      return;
+    }
     const delta = qty - currentQty;
     if (delta > 0) {
       const availableStock = getDisplayStock(productId);
@@ -756,13 +889,10 @@ export const OrdersPage: FC = () => {
         toast.error(`Stock insuficiente (máx: ${availableStock})`);
         return;
       }
-      adjustStock(productId, -delta);
-    } else if (delta < 0) {
-      adjustStock(productId, -delta);
     }
-    setEditCart((c) =>
-      c.map((i) => (i.productId === productId ? { ...i, quantity: qty } : i)),
-    );
+    const updatedCart = editCart.map((item) => item.productId === productId ? { ...item, quantity: qty } : item);
+    setEditCart(updatedCart);
+    syncEditCartStockMap(updatedCart);
   };
 
   if (isLoading) return <PageSpinner />;
@@ -886,7 +1016,7 @@ export const OrdersPage: FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map((o) => {
+                {paginatedOrders.map((o) => {
                   const cancellable = CANCELLABLE.includes(o.status);
                   return (
                     <tr
@@ -940,7 +1070,8 @@ export const OrdersPage: FC = () => {
                             variant="secondary"
                             size="sm"
                             onClick={() => openEditModal(o)}
-                            title="Editar pedido"
+                            title={o.status === "delivered" || o.status === "cancelled" ? "Los pedidos entregados o cancelados no se pueden editar" : "Editar pedido"}
+                            disabled={o.status === "delivered" || o.status === "cancelled"}
                           >
                             <PencilIcon className="h-4 w-4" />
                           </Button>
@@ -963,6 +1094,15 @@ export const OrdersPage: FC = () => {
             </table>
             </div>
           </CardBody>
+          <div className="border-t border-gray-100">
+            <Pagination
+              page={ordersPage}
+              pageSize={ordersPageSize}
+              total={filtered.length}
+              onPageChange={setOrdersPage}
+              label="pedidos"
+            />
+          </div>
         </Card>
       )}
 
@@ -1006,70 +1146,144 @@ export const OrdersPage: FC = () => {
         }
         size="2xl"
       >
-        <div className="flex h-[82vh] max-h-[90vh] min-w-0 flex-col gap-0 -mx-4 -mb-4 overflow-hidden sm:-mx-5 sm:-mb-5 md:flex-row">
-          {/* LEFT — Product catalog (shared component) */}
+        <div className="-mx-4 -mb-4 grid h-[82vh] max-h-[90vh] min-w-0 grid-cols-1 grid-rows-[minmax(230px,1fr)_minmax(185px,0.8fr)_minmax(250px,1fr)] overflow-y-auto sm:-mx-5 sm:-mb-5 lg:grid-cols-[1.05fr_1fr_0.95fr] lg:grid-rows-1 lg:overflow-hidden">
           <ProductCatalog
             products={catalogProducts}
             categories={categories}
             onAddProduct={addToCart}
+            className="md:w-full md:flex-auto md:border-b md:border-r-0 lg:border-b-0 lg:border-r"
           />
 
-          {/* RIGHT — Order configuration */}
-          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col md:w-[42%] md:flex-none">
-            {/* Details section with independent scroll */}
-            <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="flex min-h-0 min-w-0 flex-col border-b border-gray-100 lg:border-b-0 lg:border-r">
+            <div className="shrink-0 border-b border-gray-100 px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Carrito ({cart.length} {cart.length === 1 ? "producto" : "productos"})
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+              {cart.length === 0 ? (
+                <div className="flex h-full min-h-20 items-center justify-center text-gray-300">
+                  <p className="text-xs">Selecciona productos del catálogo</p>
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {cart.map((item) => {
+                    const product = products.find((p) => p.id === item.productId);
+                    const pricing = getOrderItemPricing(item, product);
+                    const availableToppings = product?.toppings ?? [];
+                    const selectedToppingNames = availableToppings
+                      .filter((topping) => item.toppingIds.includes(topping.id))
+                      .map((topping) => topping.name);
+
+                    return (
+                      <li key={item.productId} className="flex items-center gap-2 border-b border-gray-100 pb-2 last:border-b-0">
+                        <div className="min-w-0 flex-1">
+                          <p className="wrap-break-word text-xs font-medium text-gray-800">{item.productName}</p>
+                          <p className="text-[10px] text-gray-400">{formatCurrency(item.unitPrice)} c/u</p>
+                          <PromotionBadge promotion={product?.promotion} compact />
+                          {selectedToppingNames.length > 0 && (
+                            <p className="text-[10px] text-primary-600">+ {selectedToppingNames.join(", ")}</p>
+                          )}
+                          {availableToppings.length > 0 && (
+                            <ToppingSelector
+                              availableToppings={availableToppings}
+                              selectedToppingIds={item.toppingIds}
+                              onToggle={(toppingId) => toggleTopping(item.productId, toppingId)}
+                            />
+                          )}
+                        </div>
+                        <QuantityControl
+                          value={item.quantity}
+                          max={50}
+                          onDecrease={() => updateQty(item.productId, item.quantity - 1)}
+                          onIncrease={() => updateQty(item.productId, item.quantity + 1)}
+                          onChange={(value) => updateQty(item.productId, value)}
+                        />
+                        <span className="flex w-20 shrink-0 flex-col items-end text-xs font-semibold text-gray-700">
+                          {pricing.total < pricing.originalTotal && (
+                            <span className="text-[10px] font-normal text-gray-400 line-through">
+                              {formatCurrency(pricing.originalTotal)}
+                            </span>
+                          )}
+                          <span className={pricing.total < pricing.originalTotal ? "text-emerald-600" : ""}>
+                            {formatCurrency(pricing.total)}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeFromCart(item.productId)}
+                          aria-label={`Quitar ${item.productName}`}
+                          className="cursor-pointer shrink-0 rounded p-1 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-400"
+                        >
+                          <XMarkIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            <div className="shrink-0 border-t border-gray-100 px-4 py-3">
+              <div className="flex justify-between font-bold text-sm">
+                <span>Total estimado</span>
+                <span className="text-primary-600">{formatCurrency(cartTotal)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex min-h-0 min-w-0 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="border-b border-gray-100 px-4 py-3 space-y-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                   Cliente
                 </p>
-                {!selectedCustomer && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsGeneralClient(true);
-                      setSelectedCustomer(null);
-                    }}
-                    className={cn(
-                      "cursor-pointer w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                      isGeneralClient
-                        ? "border-gray-400 bg-gray-900 text-white"
-                        : "border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:bg-gray-50",
-                    )}
-                  >
-                    {isGeneralClient
-                      ? "✓ Cliente General seleccionado"
-                      : "Cliente General (sin registro)"}
-                  </button>
-                )}
-                {!isGeneralClient && (
-                  <CustomerSearch
-                    customers={customers}
-                    selected={selectedCustomer}
-                    onSelect={(c) => {
-                      setSelectedCustomer(c);
-                      if (c) {
-                        setIsGeneralClient(false);
-                        if (!address && c.address) setAddress(c.address);
-                      }
-                    }}
-                    onQuickRegister={(pf = "") => {
-                      setQuickPrefill(pf);
-                      setQuickCustomerOpen(true);
-                    }}
-                  />
-                )}
-                {isGeneralClient && (
-                  <button
-                    type="button"
-                    onClick={() => setIsGeneralClient(false)}
-                    className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 underline transition-colors"
-                  >
-                    Cambiar a cliente registrado
-                  </button>
-                )}
+                <div className="space-y-2">
+                  {!selectedCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsGeneralClient(true);
+                        setSelectedCustomer(null);
+                      }}
+                      className={cn(
+                        "w-full cursor-pointer rounded-md border py-2 text-sm font-medium transition-colors",
+                        isGeneralClient
+                          ? "border-gray-900 bg-gray-900 text-white"
+                          : "border-gray-300 bg-gray-100 text-gray-600 hover:bg-gray-200",
+                      )}
+                    >
+                      Cliente General (sin registro)
+                    </button>
+                  )}
+                  {!isGeneralClient && (
+                    <CustomerSearch
+                      customers={customers}
+                      selected={selectedCustomer}
+                      onSelect={(c) => {
+                        setSelectedCustomer(c);
+                        if (c) {
+                          setIsGeneralClient(false);
+                          if (!address && c.address) setAddress(c.address);
+                        }
+                      }}
+                      onQuickRegister={(pf = "") => {
+                        setQuickPrefill(pf);
+                        setQuickCustomerOpen(true);
+                      }}
+                    />
+                  )}
+                  {isGeneralClient && (
+                    <button
+                      type="button"
+                      onClick={() => setIsGeneralClient(false)}
+                      className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 underline transition-colors"
+                    >
+                      Cambiar a cliente registrado
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Context fields (address / schedule) */}
               {(needsAddress || needsDate) && (
                 <div className="border-b border-gray-100 px-4 py-3 space-y-2">
                   {needsAddress && (
@@ -1119,7 +1333,6 @@ export const OrdersPage: FC = () => {
                 </div>
               )}
 
-              {/* Notes */}
               <div className="border-b border-gray-100 px-4 py-2">
                 <label className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
                   <ChatBubbleLeftEllipsisIcon className="h-3 w-3" /> Notas
@@ -1134,100 +1347,46 @@ export const OrdersPage: FC = () => {
               </div>
             </div>
 
-            {/* Cart */}
-            <div className="max-h-[26vh] min-h-35 overflow-y-auto border-t border-gray-100 px-4 py-3">
-              {" "}
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2">
-                Orden ({cart.length} {cart.length === 1 ? "ítem" : "ítems"})
-              </p>
-              {cart.length === 0 ? (
-                <div className="flex items-center justify-center h-16 text-gray-300">
-                  <p className="text-xs">Selecciona productos del catálogo</p>
+            <div className="shrink-0 border-t border-gray-100 bg-white px-4 py-3 space-y-2">
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                  Método de pago
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ["cash", "Efectivo"],
+                    ["qr", "QR"],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setPaymentType(value)}
+                      className={cn(
+                        "cursor-pointer rounded-md border px-3 py-2 text-xs font-medium transition-colors",
+                        paymentType === value
+                          ? "border-gray-900 bg-gray-900 text-white"
+                          : "border-gray-300 text-gray-600 hover:bg-gray-50",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
-              ) : (
-                <ul className="space-y-2">
-                  {cart.map((item) => {
-                    const product = products.find((p) => p.id === item.productId);
-                    const availableToppings = product?.toppings ?? [];
-                    const selectedToppingNames = availableToppings
-                      .filter((topping) => item.toppingIds.includes(topping.id))
-                      .map((topping) => topping.name);
-
-                    return (
-                      <li
-                        key={item.productId}
-                        className="flex items-center gap-2"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium text-gray-800 truncate">
-                            {item.productName}
-                          </p>
-                          <p className="text-[10px] text-gray-400">
-                            {formatCurrency(item.unitPrice)} c/u
-                          </p>
-                          <PromotionBadge promotion={product?.promotion} compact />
-                          {selectedToppingNames.length > 0 && (
-                            <p className="text-[10px] text-primary-600">
-                              + {selectedToppingNames.join(", ")}
-                            </p>
-                          )}
-                          {availableToppings.length > 0 && (
-                            <ToppingSelector
-                              availableToppings={availableToppings}
-                              selectedToppingIds={item.toppingIds}
-                              onToggle={(toppingId) => toggleTopping(item.productId, toppingId)}
-                            />
-                          )}
-                        </div>
-                        <QuantityControl
-                          value={item.quantity}
-                          onDecrease={() =>
-                            updateQty(item.productId, item.quantity - 1)
-                          }
-                          onIncrease={() =>
-                            updateQty(item.productId, item.quantity + 1)
-                          }
-                          onChange={(v) => updateQty(item.productId, v)}
-                        />
-                        <span className="w-16 text-right text-xs font-semibold text-gray-700">
-                          {formatCurrency(item.unitPrice * item.quantity)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(item.productId)}
-                          className="cursor-pointer shrink-0 rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors"
-                        >
-                          <XMarkIcon className="h-3.5 w-3.5" />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="sticky bottom-0 z-10 border-t border-gray-100 bg-white px-4 py-4 space-y-2 shrink-0 shadow-[0_-8px_16px_rgba(0,0,0,0.08)]">
-              <div className="flex justify-between font-bold text-lg">
-                <span>Total estimado</span>
-                <span className="text-primary-600 text-xl">
-                  {formatCurrency(cartTotal)}
-                </span>
               </div>
 
               {!canSubmit && cart.length > 0 && (
-                <p className="text-[11px] text-amber-600 text-right">
+                <p className="text-[11px] text-amber-600 text-left flex-3">
                   {!selectedCustomer &&
                     !isGeneralClient &&
-                    "Selecciona un cliente"}
+                    "Seleccione un cliente o marque como Cliente General"}
                   {(selectedCustomer || isGeneralClient) &&
                     needsAddress &&
                     !address.trim() &&
-                    "Falta la dirección de entrega"}
+                    " Falta la dirección de entrega"}
                   {(selectedCustomer || isGeneralClient) &&
                     needsDate &&
                     (!scheduledAt || scheduledError) &&
-                    "Falta la fecha de entrega"}
+                    " Falta la fecha de entrega"}
                 </p>
               )}
 
@@ -1239,11 +1398,11 @@ export const OrdersPage: FC = () => {
                 )}
                 variant="primary"
                 size="lg"
-                onClick={() => createMut.mutate()}
+                onClick={() => { void handleCreateOrder(); }}
                 isLoading={createMut.isPending}
                 disabled={!canSubmit}
               >
-                ✓ Registrar pedido · {formatCurrency(cartTotal)}
+                ✓ Registrar pedido pagado · {formatCurrency(cartTotal)}
               </Button>
             </div>
           </div>
@@ -1269,6 +1428,11 @@ export const OrdersPage: FC = () => {
               onAddProduct={editAddToCart}
             />
             <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col md:w-[42%] md:flex-none">
+              {editOrder.isPaid && (
+                <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+                  El pago permanece registrado en Ventas. Estos cambios solo actualizan el pedido.
+                </p>
+              )}
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <div className="border-b border-gray-100 px-4 py-3 space-y-2">
                   <div className="flex flex-wrap gap-1.5">
@@ -1323,10 +1487,16 @@ export const OrdersPage: FC = () => {
                           <input
                             type="tel"
                             value={editCustomerPhone}
-                            onChange={(e) => setEditCustomerPhone(e.target.value)}
+                            onChange={(e) => {
+                              setEditCustomerPhone(e.target.value);
+                              setEditCustomerPhoneError(null);
+                            }}
                             placeholder="Ej: 71234567"
-                            className="mt-1 h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            className={`mt-1 h-8 w-full rounded-md border bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500 ${editCustomerPhoneError ? "border-red-400 bg-red-50" : "border-gray-300"}`}
                           />
+                          {editCustomerPhoneError && (
+                            <p className="mt-1 text-[11px] text-red-600">{editCustomerPhoneError}</p>
+                          )}
                         </div>
                         <button
                           type="button"
@@ -1434,6 +1604,7 @@ export const OrdersPage: FC = () => {
                   <ul className="space-y-2">
                     {editCart.map((item) => {
                       const product = products.find((p) => p.id === item.productId);
+                      const pricing = getOrderItemPricing(item, product);
                       const availableToppings = product?.toppings ?? [];
                       const selectedToppingNames = availableToppings
                         .filter((topping) => item.toppingIds.includes(topping.id))
@@ -1467,6 +1638,7 @@ export const OrdersPage: FC = () => {
                           </div>
                           <QuantityControl
                             value={item.quantity}
+                            max={50}
                             onDecrease={() =>
                               editUpdateQty(item.productId, item.quantity - 1)
                             }
@@ -1475,8 +1647,15 @@ export const OrdersPage: FC = () => {
                             }
                             onChange={(v) => editUpdateQty(item.productId, v)}
                           />
-                          <span className="w-16 text-right text-xs font-semibold text-gray-700">
-                            {formatCurrency(item.unitPrice * item.quantity)}
+                          <span className="flex w-24 shrink-0 flex-col items-end text-xs font-semibold text-gray-700">
+                            {pricing.total < pricing.originalTotal && (
+                              <span className="text-[10px] font-normal text-gray-400 line-through">
+                                {formatCurrency(pricing.originalTotal)}
+                              </span>
+                            )}
+                            <span className={pricing.total < pricing.originalTotal ? "text-emerald-600" : ""}>
+                              {formatCurrency(pricing.total)}
+                            </span>
                           </span>
                           <button
                             type="button"

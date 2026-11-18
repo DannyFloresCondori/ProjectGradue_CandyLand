@@ -20,6 +20,12 @@ export class ProductsController {
     return this.productsService.findAll();
   }
 
+  @AllowRoles('admin')
+  @Get('management/all')
+  findAllIncludingInactive() {
+    return this.productsService.findAllIncludingInactive();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
@@ -29,6 +35,12 @@ export class ProductsController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
     return this.productsService.update(id, updateProductDto);
+  }
+
+  @AllowRoles('admin')
+  @Patch(':id/reactivate')
+  reactivate(@Param('id') id: string, @Body() createProductDto: CreateProductDto) {
+    return this.productsService.reactivate(id, createProductDto);
   }
 
   @AllowRoles('admin')

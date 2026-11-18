@@ -13,7 +13,8 @@ import { PlusIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { showSuccessAlert } from "@/lib/alerts";
+import { confirmReactivate, showSuccessAlert } from "@/lib/alerts";
+import { areCatalogNamesSimilar, normalizeUniqueName } from "@/lib/utils";
 import toast from "react-hot-toast";
 import type { Topping } from "@/types";
 
@@ -54,6 +55,15 @@ export const ToppingsPage: FC = () => {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const reactivateMut = useMutation({
+    mutationFn: (id: string) => toppingService.reactivate(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["toppings"] });
+      showSuccessAlert("Topping activado correctamente");
+      closeModal();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: string; data: FormData }) =>
       toppingService.update(id, data),
@@ -85,12 +95,37 @@ export const ToppingsPage: FC = () => {
   const closeModal = () => {
     setIsOpen(false);
     setEditing(null);
-    reset();
+    reset({ name: "" });
   };
-  const onSubmit: SubmitHandler<FormData> = (data) => {
-    editing
-      ? updateMut.mutate({ id: editing.id, data })
-      : createMut.mutate(data);
+  const onSubmit: SubmitHandler<FormData> = async (data) => {
+    if (editing) {
+      updateMut.mutate({ id: editing.id, data });
+      return;
+    }
+
+    try {
+      const allToppings = await toppingService.getAllIncludingInactive();
+      const duplicateActive = allToppings.some(
+        (topping) => topping.isActive && normalizeUniqueName(topping.name) === normalizeUniqueName(data.name),
+      );
+      if (duplicateActive) {
+        toast.error("Este topping ya está registrado");
+        return;
+      }
+
+      const inactiveTopping = allToppings.find(
+        (topping) => !topping.isActive && areCatalogNamesSimilar(topping.name, data.name),
+      );
+      if (inactiveTopping) {
+        if (await confirmReactivate("topping", inactiveTopping.name)) {
+          reactivateMut.mutate(inactiveTopping.id);
+        }
+        return;
+      }
+      createMut.mutate(data);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo verificar el topping");
+    }
   };
 
   if (isLoading) return <PageSpinner />;
@@ -169,7 +204,7 @@ export const ToppingsPage: FC = () => {
             <Button type="button" variant="secondary" onClick={closeModal}>
               Cancelar
             </Button>
-            <Button type="submit" isLoading={isSubmitting}>
+            <Button type="submit" isLoading={isSubmitting || createMut.isPending || reactivateMut.isPending}>
               {editing ? "Guardar" : "Crear"}
             </Button>
           </div>

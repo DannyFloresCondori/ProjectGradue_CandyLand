@@ -16,6 +16,7 @@ import { OrdersDetail } from 'src/orders_detail/entities/orders_detail.entity';
 import {
   Payment_method,
   Sale,
+  SaleType,
   SalesStatus,
 } from 'src/sale/entities/sale.entity';
 import { SaleDetail } from 'src/sale_detail/entities/sale_detail.entity';
@@ -115,7 +116,7 @@ export class OrdersService {
     };
   }
 
-  private async reserveStock(product: Product, quantity: number, manager: EntityManager) {
+  private async getAvailableStock(product: Product, quantity: number, manager: EntityManager) {
     const normalizedQuantity = Number(quantity ?? 0);
 
     if (!Number.isFinite(normalizedQuantity) || normalizedQuantity < 1) {
@@ -137,15 +138,62 @@ export class OrdersService {
       throw new BadRequestException(`Stock insuficiente para producto ${product.name}`);
     }
 
-    const result = await productRepository.update(product.id, {
-      current_stock: availableStock - normalizedQuantity,
-    } as Partial<Product>);
+    return { normalizedQuantity, availableStock, productRepository };
+  }
 
-    if (!result.affected || result.affected < 1) {
-      throw new BadRequestException(`Stock insuficiente para producto ${product.name}`);
+  private async reserveStock(product: Product, quantity: number, manager: EntityManager) {
+    const normalizedQuantity = Number(quantity ?? 0);
+    if (!Number.isFinite(normalizedQuantity) || normalizedQuantity < 1) {
+      throw new BadRequestException('La cantidad solicitada es inválida');
     }
 
-    product.current_stock = availableStock - normalizedQuantity;
+    const updatedProducts: Array<{ current_stock: number | string }> = await manager.query(
+      'UPDATE "products" SET "current_stock" = "current_stock" - $1 WHERE "id" = $2 AND "current_stock" >= $1 RETURNING "current_stock"',
+      [normalizedQuantity, product.id],
+    );
+
+    if (updatedProducts.length === 0) {
+      const availableProducts: Array<{ current_stock: number | string }> = await manager.query(
+        'SELECT "current_stock" FROM "products" WHERE "id" = $1',
+        [product.id],
+      );
+      const availableStock = Number(availableProducts[0]?.current_stock ?? 0);
+      throw new BadRequestException(
+        `Stock insuficiente para ${product.name}: hay ${availableStock} unidades y se necesitan ${normalizedQuantity}.`,
+      );
+    }
+
+    product.current_stock = Number(updatedProducts[0].current_stock);
+  }
+
+  private async validateScheduledOrderStock(order: Order, action: 'iniciar la preparación' | 'entregar') {
+    const requiredByProduct = new Map<string, number>();
+    for (const detail of order.details) {
+      requiredByProduct.set(
+        detail.product.id,
+        (requiredByProduct.get(detail.product.id) ?? 0) + Number(detail.quantity),
+      );
+    }
+
+    const products = await this.productRepository.find({
+      where: { id: In([...requiredByProduct.keys()]) },
+      select: ['id', 'name', 'current_stock'],
+    });
+    const productsById = new Map(products.map((product) => [product.id, product]));
+
+    for (const [productId, requiredQuantity] of requiredByProduct) {
+      const product = productsById.get(productId);
+      const availableStock = Number(product?.current_stock ?? 0);
+      if (!product || availableStock < requiredQuantity) {
+        const productName = product?.name ?? 'el producto solicitado';
+        const actionLabel = action === 'iniciar la preparación'
+          ? 'iniciar la preparación del pedido'
+          : 'entregar el pedido';
+        throw new BadRequestException(
+          `No se puede ${actionLabel}: solo hay ${availableStock} unidades de ${productName} y se necesitan ${requiredQuantity}. Aumente el stock para continuar.`,
+        );
+      }
+    }
   }
 
   private async syncStockAlert(product: Product, manager?: EntityManager) {
@@ -247,6 +295,7 @@ export class OrdersService {
         programed,
         programado,
         delivery_date: incomingDeliveryDate,
+        paymentType,
         details,
         ...orderData
       } = createOrderDto;
@@ -255,6 +304,9 @@ export class OrdersService {
       const normalizedType = this.normalizeOrderType(
         incomingType ?? orderType ?? order_type,
       );
+      if (!paymentType) {
+        throw new BadRequestException('Debe seleccionar el método de pago del pedido');
+      }
       const normalizedStatus = incomingStatus ?? OrderStatus.PENDING;
       const normalizedProgramed =
         programed ?? programado ?? normalizedType === OrderType.SCHEDULED;
@@ -325,6 +377,19 @@ export class OrdersService {
 
       let total = 0;
       const orderDetails: OrdersDetail[] = [];
+      const requestedQuantities = new Map<string, number>();
+
+      for (const item of details) {
+        const quantity = Number(item.quantity);
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 50) {
+          throw new BadRequestException('La cantidad por producto debe estar entre 1 y 50');
+        }
+        const productQuantity = (requestedQuantities.get(item.productId) ?? 0) + quantity;
+        if (productQuantity > 50) {
+          throw new BadRequestException('La cantidad máxima por producto es 50');
+        }
+        requestedQuantities.set(item.productId, productQuantity);
+      }
 
       // DETAILS
       for (const item of details) {
@@ -384,6 +449,7 @@ export class OrdersService {
         total,
         type: normalizedType,
         status: normalizedStatus,
+        stock_reserved: true,
         programed: normalizedProgramed,
         delivery_address: normalizedAddress ?? undefined,
         scheduled_at: normalizedDeliveryDate
@@ -397,6 +463,31 @@ export class OrdersService {
       });
 
       const savedOrder = await queryRunner.manager.save(Order, order);
+
+      if (paymentType) {
+        const sale = queryRunner.manager.create(Sale, {
+          client,
+          user,
+          total,
+          payment_method: paymentType ?? Payment_method.IN_EFECTIVE,
+          type: SaleType.DELIVERY,
+          status: SalesStatus.DELIVERED,
+          order: savedOrder,
+          saleDetail: orderDetails.map((detail) =>
+            queryRunner.manager.create(SaleDetail, {
+              product: detail.product,
+              quantity: detail.quantity,
+              priceUnique: detail.priceUnique,
+              discountApplied: detail.discountApplied,
+              finalPrice: detail.finalPrice,
+              subtotal: detail.subtotal,
+              toppings: detail.toppings ?? [],
+            }),
+          ),
+        });
+        await queryRunner.manager.save(Sale, sale);
+      }
+
       await queryRunner.commitTransaction();
       this.ordersGateway.notifyOrderCreated(savedOrder);
       return savedOrder;
@@ -413,7 +504,7 @@ export class OrdersService {
   // ─────────────────────────────────────────────
   async findAll() {
     const orders = await this.orderRepository.find({
-      relations: { client: true, user: true, details: { product: true } },
+      relations: { client: true, user: true, details: { product: true }, sale: true },
     });
 
     return orders.map((order) => ({
@@ -439,6 +530,9 @@ export class OrdersService {
       },
       user: { id: order.user.id, fullName: order.user.name },
       total: order.total,
+      stockReserved: order.stock_reserved,
+      isPaid: order.sale?.status === SalesStatus.DELIVERED,
+      paymentType: order.sale?.payment_method ?? null,
       details: order.details.map((detail) => ({
         product: { id: detail.product.id, name: detail.product.name },
         quantity: detail.quantity,
@@ -458,7 +552,12 @@ export class OrdersService {
   async findOne(id: string) {
     const order = await this.orderRepository.findOne({
       where: { id },
-      relations: { client: true, user: true, details: { product: true } },
+      relations: {
+        client: true,
+        user: true,
+        details: { product: true },
+        sale: { saleDetail: true },
+      },
     });
 
     if (!order) throw new NotFoundException('Pedido no encontrado');
@@ -489,6 +588,9 @@ export class OrdersService {
       },
       user: { id: order.user.id, fullName: order.user.name },
       total: order.total,
+      stockReserved: order.stock_reserved,
+      isPaid: order.sale?.status === SalesStatus.DELIVERED,
+      paymentType: order.sale?.payment_method ?? null,
       details: order.details.map((detail) => ({
         product: { id: detail.product.id, name: detail.product.name },
         quantity: detail.quantity,
@@ -508,10 +610,17 @@ export class OrdersService {
   async update(id: string, updateOrderDto: UpdateOrderDto) {
     const order = await this.orderRepository.findOne({
       where: { id },
-      relations: { client: true, user: true, details: { product: true } },
+      relations: {
+        client: true,
+        user: true,
+        details: { product: true },
+        sale: { saleDetail: true },
+      },
     });
 
     if (!order) throw new NotFoundException(`Order with id ${id} not found`);
+    const originalStatus = order.status;
+    const originalStockReserved = Boolean(order.stock_reserved);
     if (
       order.status === OrderStatus.DELIVERED ||
       order.status === OrderStatus.CANCELLED
@@ -597,6 +706,25 @@ export class OrdersService {
       order.notes = updateOrderDto.notes;
     if (updateOrderDto.status) order.status = updateOrderDto.status;
 
+    const scheduledLifecycleStatus = [
+      OrderStatus.PREPARING,
+      OrderStatus.READY,
+      OrderStatus.DELIVERED,
+    ].includes(order.status);
+    if (
+      !updateOrderDto.details &&
+      !originalStockReserved &&
+      !(order.type === OrderType.SCHEDULED && scheduledLifecycleStatus)
+    ) {
+      for (const detail of order.details) {
+        if (!detail.product) continue;
+        await this.reserveStock(detail.product, detail.quantity, this.productRepository.manager);
+        const product = await this.productRepository.findOne({ where: { id: detail.product.id } });
+        if (product) await this.syncStockAlert(product);
+      }
+      order.stock_reserved = true;
+    }
+
     const shouldCreateSale =
       order.status === OrderStatus.DELIVERED &&
       (updateOrderDto.status === OrderStatus.DELIVERED ||
@@ -614,37 +742,78 @@ export class OrdersService {
 
     // DETAILS (RECALCULO COMPLETO)
     if (updateOrderDto.details) {
-      // Devolver stock anterior
-      for (const detail of order.details) {
-        if (!detail.product) continue;
-        const product = await this.productRepository.findOne({
-          where: { id: detail.product.id },
-        });
-        if (product) {
-          product.current_stock += detail.quantity;
-          await this.productRepository.save(product);
-          await this.syncStockAlert(product);
+      const stockAlertProductIds = new Set<string>();
+      const oldQuantities = new Map<string, number>();
+      if (originalStockReserved) {
+        for (const detail of order.details) {
+          if (!detail.product) continue;
+          const productId = detail.product.id;
+          oldQuantities.set(productId, (oldQuantities.get(productId) ?? 0) + detail.quantity);
+          stockAlertProductIds.add(productId);
         }
+        await Promise.all(
+          [...oldQuantities].map(([productId, quantity]) =>
+            this.productRepository.increment({ id: productId }, 'current_stock', quantity),
+          ),
+        );
       }
 
       // Eliminar detalles viejos
       await this.ordersDetailRepository.remove(order.details);
 
-      let total = 0;
-      const newDetails: OrdersDetail[] = [];
+      const requestedItems = updateOrderDto.details;
+      const productIds = [...new Set(requestedItems.map((item) => item.productId))];
+      const products = await this.productRepository.find({
+        where: { id: In(productIds), isActive: true },
+        relations: { promotion: true },
+      });
+      const productsById = new Map(products.map((product) => [product.id, product]));
+      const requestedQuantities = new Map<string, number>();
 
-      for (const item of updateOrderDto.details) {
-        const product = await this.productRepository.findOne({
-          where: { id: item.productId, isActive: true },
-          relations: { promotion: true }, // cargar promoción
-        });
-
-        if (!product)
+      for (const item of requestedItems) {
+        const product = productsById.get(item.productId);
+        if (!product) {
           throw new NotFoundException(
             `Product with id ${item.productId} not found`,
           );
-        await this.reserveStock(product, item.quantity, this.productRepository.manager);
+        }
+        requestedQuantities.set(
+          item.productId,
+          (requestedQuantities.get(item.productId) ?? 0) + Number(item.quantity),
+        );
+      }
 
+      for (const [productId, quantity] of requestedQuantities) {
+        const product = productsById.get(productId)!;
+        if (!Number.isFinite(quantity) || quantity < 1) {
+          throw new BadRequestException('La cantidad solicitada es inválida');
+        }
+        if (quantity > 50) {
+          throw new BadRequestException('La cantidad máxima por producto es 50');
+        }
+      }
+
+        await Promise.all(
+          [...requestedQuantities].map(async ([productId, quantity]) => {
+            await this.reserveStock(
+              productsById.get(productId)!,
+              quantity,
+              this.productRepository.manager,
+            );
+            stockAlertProductIds.add(productId);
+          }),
+        );
+
+      const toppingIds = [...new Set(requestedItems.flatMap((item) => item.toppingIds ?? []))];
+      const toppings = toppingIds.length > 0
+        ? await this.toppingRepository.find({ where: { id: In(toppingIds), isActive: true } })
+        : [];
+      const toppingsById = new Map(toppings.map((topping) => [topping.id, topping]));
+      const newDetails: OrdersDetail[] = [];
+      let total = 0;
+
+      for (const item of requestedItems) {
+        const product = productsById.get(item.productId)!;
         // Aplicar promoción si existe
         const { finalPrice, discountApplied, subtotal } = this.applyPromotion(
           Number(product.price),
@@ -654,12 +823,6 @@ export class OrdersService {
 
         total += subtotal;
 
-        const toppings = Array.isArray(item.toppingIds) && item.toppingIds.length > 0
-          ? await this.toppingRepository.find({
-              where: { id: In(item.toppingIds), isActive: true },
-            })
-          : [];
-
         const detail = this.ordersDetailRepository.create({
           product,
           quantity: item.quantity,
@@ -667,18 +830,68 @@ export class OrdersService {
           discountApplied,
           finalPrice,
           subtotal,
-          toppings: toppings.map((t) => ({ id: t.id, name: t.name })),
+          toppings: (item.toppingIds ?? [])
+            .map((toppingId) => toppingsById.get(toppingId))
+            .filter((topping): topping is Topping => Boolean(topping))
+            .map((topping) => ({ id: topping.id, name: topping.name })),
         });
 
         newDetails.push(detail);
-
-        product.current_stock -= item.quantity;
-        await this.productRepository.save(product);
-        await this.syncStockAlert(product);
       }
 
       order.details = newDetails;
       order.total = total;
+      order.stock_reserved = true;
+
+      if (order.sale?.status === SalesStatus.DELIVERED) {
+        await this.saleDetailRepository.remove(order.sale.saleDetail ?? []);
+        order.sale.total = total;
+        order.sale.client = order.client;
+        order.sale.saleDetail = newDetails.map((detail) =>
+          this.saleDetailRepository.create({
+            sale: order.sale,
+            product: detail.product,
+            quantity: detail.quantity,
+            priceUnique: detail.priceUnique,
+            discountApplied: detail.discountApplied,
+            finalPrice: detail.finalPrice,
+            subtotal: detail.subtotal,
+            toppings: detail.toppings ?? [],
+          }),
+        );
+        await this.saleRepository.save(order.sale);
+      }
+
+      await Promise.all(
+        [...stockAlertProductIds].map(async (productId) => {
+          const product = productsById.get(productId)
+            ?? await this.productRepository.findOne({ where: { id: productId } });
+          if (product) await this.syncStockAlert(product);
+        }),
+      );
+    }
+
+    if (
+      order.type === OrderType.SCHEDULED &&
+      originalStatus !== OrderStatus.DELIVERED &&
+      updateOrderDto.status === OrderStatus.PREPARING
+    ) {
+      await this.validateScheduledOrderStock(order, 'iniciar la preparación');
+    }
+
+    if (
+      order.type === OrderType.SCHEDULED &&
+      originalStatus !== OrderStatus.DELIVERED &&
+      updateOrderDto.status === OrderStatus.DELIVERED
+    ) {
+      await this.validateScheduledOrderStock(order, 'entregar');
+      for (const detail of order.details) {
+        const product = await this.productRepository.findOne({ where: { id: detail.product.id } });
+        if (!product) throw new NotFoundException(`Producto ${detail.product.id} no encontrado`);
+        await this.reserveStock(product, detail.quantity, this.productRepository.manager);
+        await this.syncStockAlert(detail.product);
+      }
+      order.stock_reserved = true;
     }
 
     const savedOrder = await this.orderRepository.save(order);
@@ -689,25 +902,36 @@ export class OrdersService {
   // ─────────────────────────────────────────────
   // ❌ CANCELAR ORDER
   // ─────────────────────────────────────────────
-  async remove(id: string) {
+  async remove(id: string, reason?: string) {
     const order = await this.orderRepository.findOne({
       where: { id },
-      relations: { details: { product: true } },
+      relations: { details: { product: true }, sale: true },
     });
 
     if (!order) throw new NotFoundException('Pedido no encontrado');
     if (order.status === OrderStatus.CANCELLED) {
       throw new BadRequestException('El pedido ya está cancelado');
     }
+    if (order.sale?.status === SalesStatus.DELIVERED && !reason?.trim()) {
+      throw new BadRequestException('La razón de cancelación es obligatoria para un pedido pagado');
+    }
 
-    // Restaurar stock con incrementos atómicos y releer el producto para la alerta
-    for (const detail of order.details) {
-      await this.productRepository.increment({ id: detail.product.id }, 'current_stock', detail.quantity);
-      const refreshed = await this.productRepository.findOne({ where: { id: detail.product.id } });
-      if (refreshed) await this.syncStockAlert(refreshed);
+    // Only restore inventory that was physically reserved before cancellation.
+    if (order.stock_reserved) {
+      for (const detail of order.details) {
+        await this.productRepository.increment({ id: detail.product.id }, 'current_stock', detail.quantity);
+        const refreshed = await this.productRepository.findOne({ where: { id: detail.product.id } });
+        if (refreshed) await this.syncStockAlert(refreshed);
+      }
+      order.stock_reserved = false;
     }
 
     order.status = OrderStatus.CANCELLED;
+    if (order.sale?.status === SalesStatus.DELIVERED) {
+      order.sale.status = SalesStatus.CANCELED;
+      order.sale.reason = reason!.trim();
+      await this.saleRepository.save(order.sale);
+    }
     const savedOrder = await this.orderRepository.save(order);
     this.ordersGateway.notifyOrderUpdated({ id: savedOrder.id, status: savedOrder.status });
 

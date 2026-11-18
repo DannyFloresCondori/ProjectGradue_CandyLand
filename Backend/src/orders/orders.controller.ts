@@ -31,7 +31,7 @@ export class OrdersController {
 
   @AllowRoles('admin', 'staff')
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.ordersService.remove(id);
+  remove(@Param('id', ParseUUIDPipe) id: string, @Body('reason') reason?: string) {
+    return this.ordersService.remove(id, reason);
   }
 }

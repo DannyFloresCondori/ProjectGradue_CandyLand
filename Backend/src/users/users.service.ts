@@ -138,6 +138,16 @@ export class UsersService implements OnModuleInit {
     let role: Role | undefined;
     if (roleId) {
       role = await this.findRoleOrThrow(roleId);
+      if (roleGroupOf(role.name) === 'admin' && roleGroupOf(userExist.role.name) !== 'admin') {
+        const existingAdmin = await this.userRepository.findOne({
+          where: { id: Not(id), role: { id: role.id } },
+          relations: ['role'],
+        });
+
+        if (existingAdmin) {
+          throw new BadRequestException('Ya existe un administrador registrado');
+        }
+      }
     }
 
     const userUpdated = await this.userRepository.preload({

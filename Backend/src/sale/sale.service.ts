@@ -555,7 +555,7 @@ export class SaleService {
     try {
       const sale = await queryRunner.manager.findOne(Sale, {
         where: { id },
-        relations: { saleDetail: { product: true } },
+        relations: { saleDetail: { product: true }, order: true },
       });
 
       if (!sale) throw new NotFoundException(`Sale with id ${id} not found`);
@@ -566,13 +566,31 @@ export class SaleService {
         throw new BadRequestException('La razón de cancelación es obligatoria');
       }
 
-      // La reposición se hace con un incremento atómico en la base de datos; luego se
-      // relee el producto para sincronizar su alerta con el stock real (evita perder
-      // reposiciones cuando un mismo producto aparece en varias líneas de la venta).
-      for (const detail of sale.saleDetail) {
-        await this.restoreStock(detail.product, detail.quantity, queryRunner.manager);
-        const refreshed = await queryRunner.manager.findOne(Product, { where: { id: detail.product.id } });
-        if (refreshed) await this.syncStockAlert(refreshed, queryRunner.manager);
+      const order = sale.order;
+      const stockWasDeducted = !order || order.stock_reserved;
+
+      if (stockWasDeducted) {
+        // Reponer solo el stock que fue descontado físicamente.
+        for (const detail of sale.saleDetail) {
+          await this.restoreStock(detail.product, detail.quantity, queryRunner.manager);
+          const refreshed = await queryRunner.manager.findOne(Product, { where: { id: detail.product.id } });
+          if (refreshed) await this.syncStockAlert(refreshed, queryRunner.manager);
+        }
+      }
+
+      if (order) {
+        let orderChanged = false;
+        if (stockWasDeducted) {
+          order.stock_reserved = false;
+          orderChanged = true;
+        }
+        if (order.status !== OrderStatus.DELIVERED && order.status !== OrderStatus.CANCELLED) {
+          order.status = OrderStatus.CANCELLED;
+          orderChanged = true;
+        }
+        if (orderChanged) {
+        await queryRunner.manager.save(Order, order);
+        }
       }
 
       sale.status = SalesStatus.CANCELED;

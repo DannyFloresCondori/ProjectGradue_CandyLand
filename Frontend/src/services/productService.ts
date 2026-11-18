@@ -47,7 +47,19 @@ export const productService = {
       const { data } = await apiClient.get('/products')
       const payload = Array.isArray(data) ? data : data?.data ?? data?.items ?? []
       const list = Array.isArray(payload) ? payload : [payload]
-      return list.filter(Boolean).map(normalizeProduct)
+      return list
+        .filter(Boolean)
+        .map(normalizeProduct)
+        .sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime())
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getAllIncludingInactive(): Promise<Product[]> {
+    try {
+      const { data } = await apiClient.get('/products/management/all')
+      return (Array.isArray(data) ? data : []).map(normalizeProduct)
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }
@@ -118,6 +130,24 @@ export const productService = {
       })
       const created = normalizeProduct(data)
       return created
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async reactivate(id: string, input: ProductInput): Promise<Product> {
+    try {
+      const { data } = await apiClient.patch(`/products/${id}/reactivate`, {
+        name: input.name,
+        image: '',
+        description: input.description || undefined,
+        price: input.price,
+        current_stock: input.stock,
+        minimum_stock: input.minStock,
+        categoryId: input.categoryId,
+        toppingId: input.toppingIds,
+      })
+      return normalizeProduct(data)
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }

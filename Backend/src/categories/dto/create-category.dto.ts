@@ -6,9 +6,11 @@ import {
   Length,
   Matches,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateCategoryDto {
 
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString()
   @IsNotEmpty({ message: 'El nombre de la categoría es obligatorio' })
   @Length(2, 25)

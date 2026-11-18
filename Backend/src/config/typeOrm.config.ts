@@ -15,6 +15,6 @@ export const TypeOrmConfig = (
     entities: [join(__dirname, '../**/*.entity.{ts,js}')],
     migrations: [join(__dirname, '../migrations/*.{ts,js}')],
     migrationsRun: configService.get<string>('DB_MIGRATIONS_RUN', 'true') === 'true',
-    synchronize: false,
+    synchronize: true,
 
 })

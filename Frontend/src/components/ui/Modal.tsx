@@ -1,7 +1,15 @@
 import { cn } from '@/lib/utils'
 import type { FC, ReactNode } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { XMarkIcon } from '@heroicons/react/24/outline'
+
+const openModals: { token: object; close: () => void }[] = []
+
+const handleModalKeyDown = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape') return
+
+  openModals.at(-1)?.close()
+}
 
 interface ModalProps {
   isOpen: boolean
@@ -14,11 +22,29 @@ interface ModalProps {
 const sizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-2xl', '2xl': 'max-w-6xl' }
 
 export const Modal: FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md' }) => {
+  const modalToken = useRef({}).current
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    if (isOpen) document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [isOpen, onClose])
+    if (!isOpen) return
+
+    openModals.push({
+      token: modalToken,
+      close: () => onCloseRef.current(),
+    })
+    if (openModals.length === 1) {
+      document.addEventListener('keydown', handleModalKeyDown)
+    }
+
+    return () => {
+      const index = openModals.findLastIndex((modal) => modal.token === modalToken)
+      if (index !== -1) openModals.splice(index, 1)
+      if (openModals.length === 0) {
+        document.removeEventListener('keydown', handleModalKeyDown)
+      }
+    }
+  }, [isOpen, modalToken])
 
   if (!isOpen) return null
 
