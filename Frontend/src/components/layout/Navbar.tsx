@@ -163,8 +163,19 @@ export const Navbar: FC = () => {
 
   const bellRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const sessionReminder = useRef<{
+    userId: string | null
+    stockAlertIds: Set<string>
+    pendingOrderIds: Set<string>
+    scheduledOrderIds: Set<string>
+  }>({
+    userId: null,
+    stockAlertIds: new Set(),
+    pendingOrderIds: new Set(),
+    scheduledOrderIds: new Set(),
+  })
 
-  const { data: activeAlerts = [] } = useQuery({
+  const { data: activeAlerts = [], isFetching: isFetchingAlerts } = useQuery({
     queryKey: ['active-alerts'],
     queryFn: inventoryService.getActiveAlerts,
     // poll frequently so server-created alerts appear promptly in the Navbar
@@ -174,7 +185,7 @@ export const Navbar: FC = () => {
     refetchOnMount: true,
   })
 
-  const { data: allOrders = [] } = useQuery({
+  const { data: allOrders = [], isFetching: isFetchingOrders } = useQuery({
     queryKey: ['orders'],
     queryFn: orderService.getAll,
     refetchInterval: 30_000,
@@ -183,6 +194,7 @@ export const Navbar: FC = () => {
   })
 
   const unresolvedAlerts = activeAlerts.filter((alert) => !alert.isResolved)
+
   const alertNotifications: Notification[] = unresolvedAlerts
     .filter((alert) => !removedAlertIds.includes(alert.id))
     .map((alert) => ({
@@ -201,6 +213,90 @@ export const Navbar: FC = () => {
   const scheduledOrders = allOrders.filter(
     (o) => o.orderType === 'scheduled' && ['pending', 'preparing', 'ready'].includes(o.status)
   )
+
+  useEffect(() => {
+    if (!user?.id) {
+      sessionReminder.current.userId = null
+      sessionReminder.current.stockAlertIds.clear()
+      sessionReminder.current.pendingOrderIds.clear()
+      sessionReminder.current.scheduledOrderIds.clear()
+      return
+    }
+    if (isFetchingAlerts || isFetchingOrders) return
+
+    if (sessionReminder.current.userId !== user.id) {
+      sessionReminder.current.userId = user.id
+      sessionReminder.current.stockAlertIds.clear()
+      sessionReminder.current.pendingOrderIds.clear()
+      sessionReminder.current.scheduledOrderIds.clear()
+    }
+
+    const newAlerts = activeAlerts.filter(
+      (alert) =>
+        !alert.isResolved &&
+        !sessionReminder.current.stockAlertIds.has(alert.id),
+    )
+    const newPendingOrders = allOrders.filter(
+      (order) =>
+        order.orderType !== 'scheduled' &&
+        ['pending', 'preparing', 'ready'].includes(order.status) &&
+        !sessionReminder.current.pendingOrderIds.has(order.id),
+    )
+    const newScheduledOrders = allOrders.filter(
+      (order) =>
+        order.orderType === 'scheduled' &&
+        ['pending', 'preparing', 'ready'].includes(order.status) &&
+        !sessionReminder.current.scheduledOrderIds.has(order.id),
+    )
+
+    if (
+      newAlerts.length === 0 &&
+      newPendingOrders.length === 0 &&
+      newScheduledOrders.length === 0
+    ) {
+      return
+    }
+
+    newAlerts.forEach((alert) =>
+      sessionReminder.current.stockAlertIds.add(alert.id),
+    )
+    newPendingOrders.forEach((order) =>
+      sessionReminder.current.pendingOrderIds.add(order.id),
+    )
+    newScheduledOrders.forEach((order) =>
+      sessionReminder.current.scheduledOrderIds.add(order.id),
+    )
+
+    const names = (values: string[]) => {
+      const visibleNames = values.slice(0, 3).join(', ')
+      const remainingCount = values.length - 3
+      return remainingCount > 0
+        ? `${visibleNames} y ${remainingCount} más`
+        : visibleNames
+    }
+    const reminders: string[] = []
+
+    if (newAlerts.length > 0) {
+      reminders.push(
+        `${newAlerts.length} alerta${newAlerts.length === 1 ? '' : 's'} de stock mínimo: ${names(newAlerts.map((alert) => alert.productName))}`,
+      )
+    }
+    if (newPendingOrders.length > 0) {
+      reminders.push(
+        `${newPendingOrders.length} pedido${newPendingOrders.length === 1 ? '' : 's'} pendiente${newPendingOrders.length === 1 ? '' : 's'}: ${names(newPendingOrders.map((order) => order.customerName ?? `#${order.id.slice(-6).toUpperCase()}`))}`,
+      )
+    }
+    if (newScheduledOrders.length > 0) {
+      reminders.push(
+        `${newScheduledOrders.length} pedido${newScheduledOrders.length === 1 ? '' : 's'} programado${newScheduledOrders.length === 1 ? '' : 's'}: ${names(newScheduledOrders.map((order) => order.customerName ?? `#${order.id.slice(-6).toUpperCase()}`))}`,
+      )
+    }
+
+    toast.error(
+      `Recordatorio: ${reminders.join('; ')}. Revisa Notificaciones y Pedidos.`,
+      { duration: 3_000 },
+    )
+  }, [activeAlerts, allOrders, isFetchingAlerts, isFetchingOrders, user?.id])
 
   const scheduledNotifications: Notification[] = scheduledOrders
     .filter((o) => !removedScheduledIds.includes(o.id) && o.scheduledAt)

@@ -244,6 +244,7 @@ export const OrdersPage: FC = () => {
 
   // New order state
   const [isNewOpen, setIsNewOpen] = useState(false);
+  const [mobileStep, setMobileStep] = useState<1 | 2 | 3>(1);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<OrderType>("delivery");
   const [paymentType, setPaymentType] = useState<PaymentType>("cash");
@@ -663,6 +664,7 @@ export const OrdersPage: FC = () => {
       setCart(updatedCart);
       syncCartStockMap(updatedCart);
     }
+    toast.success(`${prod.name} añadido al carrito`);
   };
 
   const removeFromCart = (productId: string) => {
@@ -704,6 +706,7 @@ export const OrdersPage: FC = () => {
 
   const closeNewModal = () => {
     setIsNewOpen(false);
+    setMobileStep(1);
     setCart([]);
     setOrderType("delivery");
     setPaymentType("cash");
@@ -863,6 +866,7 @@ export const OrdersPage: FC = () => {
       setEditCart(updatedCart);
       syncEditCartStockMap(updatedCart);
     }
+    toast.success(`${prod.name} añadido al carrito`);
   };
 
   const editRemoveFromCart = (productId: string) => {
@@ -905,6 +909,7 @@ export const OrdersPage: FC = () => {
         <Button
           onClick={() => {
             resetStockMap();
+            setMobileStep(1);
             setIsNewOpen(true);
           }}
           size="sm"
@@ -973,7 +978,14 @@ export const OrdersPage: FC = () => {
               : "Registra el primer pedido"
           }
           action={
-            <Button size="sm" onClick={() => setIsNewOpen(true)}>
+            <Button
+              size="sm"
+              onClick={() => {
+                resetStockMap();
+                setMobileStep(1);
+                setIsNewOpen(true);
+              }}
+            >
               <PlusIcon className="h-4 w-4" />
               Nuevo pedido
             </Button>
@@ -1115,7 +1127,7 @@ export const OrdersPage: FC = () => {
             <h2 className="text-base font-semibold text-gray-900">
               Nuevo pedido
             </h2>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="hidden flex-wrap gap-1.5 lg:flex">
               {(
                 Object.entries(TYPE_MAP) as [
                   OrderType,
@@ -1146,15 +1158,53 @@ export const OrdersPage: FC = () => {
         }
         size="2xl"
       >
-        <div className="-mx-4 -mb-4 grid h-[82vh] max-h-[90vh] min-w-0 grid-cols-1 grid-rows-[minmax(230px,1fr)_minmax(185px,0.8fr)_minmax(250px,1fr)] overflow-y-auto sm:-mx-5 sm:-mb-5 lg:grid-cols-[1.05fr_1fr_0.95fr] lg:grid-rows-1 lg:overflow-hidden">
-          <ProductCatalog
-            products={catalogProducts}
-            categories={categories}
-            onAddProduct={addToCart}
-            className="md:w-full md:flex-auto md:border-b md:border-r-0 lg:border-b-0 lg:border-r"
-          />
+        <div className="-mx-4 -mb-4 flex h-[calc(95vh-6rem)] max-h-[90vh] min-w-0 flex-col overflow-hidden sm:-mx-5 sm:-mb-5 lg:grid lg:grid-cols-[1.05fr_1fr_0.95fr] lg:grid-rows-1">
+          <div className="shrink-0 px-4 pt-3 lg:hidden">
+            <p className="text-xs font-semibold text-gray-500">
+              Paso {mobileStep} de 3
+            </p>
+            <div className="mt-2 grid grid-cols-3 gap-1">
+              {["Productos", "Carrito", "Datos del pedido"].map((label, index) => (
+                <div
+                  key={label}
+                  className={cn(
+                    "h-1 rounded-full",
+                    mobileStep >= index + 1 ? "bg-primary-500" : "bg-gray-200",
+                  )}
+                />
+              ))}
+            </div>
+          </div>
 
-          <div className="flex min-h-0 min-w-0 flex-col border-b border-gray-100 lg:border-b-0 lg:border-r">
+          <div
+            className={cn(
+              "min-h-0 flex-1 flex-col lg:flex",
+              mobileStep === 1 ? "flex" : "hidden",
+            )}
+          >
+            <ProductCatalog
+              products={catalogProducts}
+              categories={categories}
+              onAddProduct={addToCart}
+              className="md:w-full md:flex-auto md:border-b md:border-r-0 lg:border-b-0 lg:border-r"
+            />
+            <div className="shrink-0 border-t border-gray-100 bg-white p-3 lg:hidden">
+              <Button
+                className="w-full"
+                onClick={() => setMobileStep(2)}
+                disabled={cart.length === 0}
+              >
+                Ver carrito ({cart.length})
+              </Button>
+            </div>
+          </div>
+
+          <div
+            className={cn(
+              "min-h-0 flex-col border-b border-gray-100 lg:flex lg:border-b-0 lg:border-r",
+              mobileStep === 2 ? "flex flex-1" : "hidden",
+            )}
+          >
             <div className="shrink-0 border-b border-gray-100 px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Carrito ({cart.length} {cart.length === 1 ? "producto" : "productos"})
@@ -1229,10 +1279,64 @@ export const OrdersPage: FC = () => {
                 <span className="text-primary-600">{formatCurrency(cartTotal)}</span>
               </div>
             </div>
+            <div className="shrink-0 border-t border-gray-100 bg-white p-3 lg:hidden">
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => setMobileStep(1)}
+                >
+                  Productos
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => setMobileStep(3)}
+                >
+                  Continuar con el pedido
+                </Button>
+              </div>
+            </div>
           </div>
 
-          <div className="flex min-h-0 min-w-0 flex-col">
+          <div
+            className={cn(
+              "min-h-0 min-w-0 flex-col lg:flex",
+              mobileStep === 3 ? "flex flex-1" : "hidden",
+            )}
+          >
             <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="border-b border-gray-100 px-4 py-3 lg:hidden">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                  Tipo de pedido
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    Object.entries(TYPE_MAP) as [
+                      OrderType,
+                      { label: string; icon: string },
+                    ][]
+                  ).map(([type, info]) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => {
+                        setOrderType(type);
+                        setAddress("");
+                        setScheduledAt("");
+                        setScheduledError(null);
+                      }}
+                      className={cn(
+                        "cursor-pointer rounded-lg border px-2 py-2 text-xs font-medium transition-colors",
+                        orderType === type
+                          ? "bg-gray-900 text-white border-gray-900"
+                          : "border-gray-300 text-gray-600",
+                      )}
+                    >
+                      {info.icon} {info.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="border-b border-gray-100 px-4 py-3 space-y-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                   Cliente
@@ -1348,6 +1452,13 @@ export const OrdersPage: FC = () => {
             </div>
 
             <div className="shrink-0 border-t border-gray-100 bg-white px-4 py-3 space-y-2">
+              <Button
+                variant="secondary"
+                className="w-full lg:hidden"
+                onClick={() => setMobileStep(2)}
+              >
+                Volver al carrito
+              </Button>
               <div className="space-y-1.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                   Método de pago

@@ -52,6 +52,8 @@ interface CartItem {
   toppingIds: string[];
 }
 
+const EMPTY_PRODUCTS: Product[] = [];
+
 // ─── Ticket ───────────────────────────────────────────────────────────────────
 
 const Ticket: FC<{
@@ -253,6 +255,7 @@ export const SalesPage: FC = () => {
   const navigate = useNavigate();
 
   const [isNewOpen, setIsNewOpen] = useState(false);
+  const [mobileStep, setMobileStep] = useState<1 | 2 | 3>(1);
   const [ticketSale, setTicketSale] = useState<Sale | null>(null);
   const [cancelModal, setCancelModal] = useState<{
     sale: Sale;
@@ -279,7 +282,7 @@ export const SalesPage: FC = () => {
     queryKey: ["sales"],
     queryFn: saleService.getAll,
   });
-  const { data: products = [] } = useQuery({
+  const { data: products = EMPTY_PRODUCTS } = useQuery({
     queryKey: ["products-active"],
     queryFn: productService.getActive,
   });
@@ -477,6 +480,7 @@ export const SalesPage: FC = () => {
         },
       ]);
     }
+    toast.success(`${prod.name} añadido al carrito`);
   };
 
   const toggleTopping = (productId: string, toppingId: string) => {
@@ -541,6 +545,7 @@ export const SalesPage: FC = () => {
   }, 0);
 
   const resetSale = () => {
+    setMobileStep(1);
     setCart([]);
     setSelectedCustomer(null);
     setIsGeneralClient(false);
@@ -694,6 +699,7 @@ export const SalesPage: FC = () => {
         <Button
           onClick={() => {
             resetStockMap();
+            setMobileStep(1);
             setIsNewOpen(true);
           }}
           size="sm"
@@ -888,15 +894,53 @@ export const SalesPage: FC = () => {
         title="Registrar venta"
         size="2xl"
       >
-        <div className="-mx-4 -mb-4 grid h-[78vh] min-w-0 grid-cols-1 grid-rows-[minmax(235px,1.1fr)_minmax(175px,0.8fr)_minmax(245px,1.1fr)] overflow-y-auto sm:-mx-5 sm:-mb-5 lg:h-[70vh] lg:grid-cols-[1.05fr_1fr_0.95fr] lg:grid-rows-1 lg:overflow-hidden">
-          <ProductCatalog
-            products={catalogProducts}
-            categories={categories}
-            onAddProduct={addToCart}
-            className="md:w-full md:flex-auto md:border-b md:border-r-0 lg:border-b-0 lg:border-r"
-          />
+        <div className="-mx-4 -mb-4 flex h-[calc(95vh-6rem)] min-w-0 flex-col overflow-hidden sm:-mx-5 sm:-mb-5 lg:grid lg:h-[70vh] lg:grid-cols-[1.05fr_1fr_0.95fr] lg:grid-rows-1">
+          <div className="shrink-0 px-4 pt-3 lg:hidden">
+            <p className="text-xs font-semibold text-gray-500">
+              Paso {mobileStep} de 3
+            </p>
+            <div className="mt-2 grid grid-cols-3 gap-1">
+              {["Productos", "Carrito", "Cliente y pago"].map((label, index) => (
+                <div
+                  key={label}
+                  className={cn(
+                    "h-1 rounded-full",
+                    mobileStep >= index + 1 ? "bg-primary-500" : "bg-gray-200",
+                  )}
+                />
+              ))}
+            </div>
+          </div>
 
-          <div className="flex min-h-0 min-w-0 flex-col border-b border-gray-100 lg:border-b-0 lg:border-r">
+          <div
+            className={cn(
+              "min-h-0 flex-1 flex-col lg:flex",
+              mobileStep === 1 ? "flex" : "hidden",
+            )}
+          >
+            <ProductCatalog
+              products={catalogProducts}
+              categories={categories}
+              onAddProduct={addToCart}
+              className="md:w-full md:flex-auto md:border-b md:border-r-0 lg:border-b-0 lg:border-r"
+            />
+            <div className="shrink-0 border-t border-gray-100 bg-white p-3 lg:hidden">
+              <Button
+                className="w-full"
+                onClick={() => setMobileStep(2)}
+                disabled={cart.length === 0}
+              >
+                Ver carrito ({cart.length})
+              </Button>
+            </div>
+          </div>
+
+          <div
+            className={cn(
+              "min-h-0 flex-col border-b border-gray-100 lg:flex lg:border-b-0 lg:border-r",
+              mobileStep === 2 ? "flex flex-1" : "hidden",
+            )}
+          >
             <div className="shrink-0 border-b border-gray-100 px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Carrito ({cart.length}{" "}
@@ -1003,9 +1047,31 @@ export const SalesPage: FC = () => {
                 </span>
               </div>
             </div>
+            <div className="shrink-0 border-t border-gray-100 bg-white p-3 lg:hidden">
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => setMobileStep(1)}
+                >
+                  Productos
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => setMobileStep(3)}
+                >
+                  Continuar con la venta
+                </Button>
+              </div>
+            </div>
           </div>
 
-          <div className="flex min-h-0 min-w-0 flex-col">
+          <div
+            className={cn(
+              "min-h-0 min-w-0 flex-col lg:flex",
+              mobileStep === 3 ? "flex flex-1" : "hidden",
+            )}
+          >
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Cliente y pago
@@ -1055,6 +1121,13 @@ export const SalesPage: FC = () => {
             </div>
 
             <div className="shrink-0 border-t border-gray-100 px-4 py-3 space-y-3">
+              <Button
+                variant="secondary"
+                className="w-full lg:hidden"
+                onClick={() => setMobileStep(2)}
+              >
+                Volver al carrito
+              </Button>
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Método de pago
               </p>

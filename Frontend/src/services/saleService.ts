@@ -26,8 +26,8 @@ export function normalizeSale(item: any): Sale {
     paymentType: normalizePaymentType(item.payment_method ?? item.paymentType),
     status: item.status === 'canceled' ? 'canceled' : 'delivered',
     cancellationReason: item.cancellation_reason ?? item.cancellationReason ?? item.reason ?? null,
-    details: Array.isArray(item.saleDetail ?? item.details) ? (item.saleDetail ?? item.details).map((detail: any) => ({
-      id: detail.id,
+    details: Array.isArray(item.saleDetail ?? item.details) ? (item.saleDetail ?? item.details).map((detail: any, index: number) => ({
+      id: detail.id || `${item.id}-detail-${index}`,
       saleId: detail.saleId ?? item.id,
       productId: detail.product?.id ?? detail.productId ?? '',
       productName: detail.product?.name ?? detail.productName ?? '',

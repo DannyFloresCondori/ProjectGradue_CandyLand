@@ -98,7 +98,7 @@ export const productService = {
         }
       })()
 
-      const baseUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:3002/api/v1`
+      const baseUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:3001/api/v1`
       const response = await fetch(`${baseUrl}/products/${id}/image`, {
         method: 'POST',
         body: formData,

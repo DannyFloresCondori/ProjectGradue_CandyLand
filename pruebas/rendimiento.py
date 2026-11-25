@@ -1,7 +1,7 @@
 # Medición de tiempos de respuesta (RNF-04) contra la API local con la base de pruebas
 import time, json, statistics, datetime, platform, requests
 import os
-B = os.environ.get("API_URL", "http://127.0.0.1:3002/api/v1")
+B = os.environ.get("API_URL", "http://127.0.0.1:3001/api/v1")
 def login(u, p):
     r = requests.post(B + "/auth/login", json={"username": u, "password": p}); return r.json()
 adm = login("admin", "Admin2026"); A = {"Authorization": "Bearer " + adm["token"]}

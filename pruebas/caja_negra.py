@@ -2,7 +2,7 @@
 import json, sys, datetime, requests
 
 import os
-BASE = os.environ.get("API_URL", "http://127.0.0.1:3002/api/v1")
+BASE = os.environ.get("API_URL", "http://127.0.0.1:3001/api/v1")
 R = []
 
 def call(method, path, token=None, **kw):

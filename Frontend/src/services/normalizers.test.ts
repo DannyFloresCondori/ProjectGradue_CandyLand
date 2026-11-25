@@ -31,6 +31,18 @@ describe('normalizers include discount metadata', () => {
     })
   })
 
+  it('creates stable IDs for sale details without an ID', () => {
+    const sale = normalizeSale({
+      id: 's-1',
+      saleDetail: [{ quantity: 1 }, { quantity: 2 }],
+    })
+
+    expect(sale.details.map((detail) => detail.id)).toEqual([
+      's-1-detail-0',
+      's-1-detail-1',
+    ])
+  })
+
   it('includes discount and promotion info in orders', () => {
     const order = normalizeOrder({
       id: 'o-1',

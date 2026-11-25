@@ -11,5 +11,5 @@ Las pruebas se ejecutan contra una base de datos de pruebas separada (nunca cont
 
 Requisitos para caja negra y rendimiento: backend en ejecución sobre una base vacía con
 `ADMIN_USERNAME=admin` y `ADMIN_PASSWORD=Admin2026`, y `API_URL` apuntando a la API
-(por defecto `http://127.0.0.1:3002/api/v1`). Requiere Python 3 con `requests`.
+(por defecto `http://127.0.0.1:3001/api/v1`). Requiere Python 3 con `requests`.
 Los resultados de la ejecución documentada en el proyecto de grado están en `resultados/`.

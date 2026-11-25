@@ -57,7 +57,7 @@ async function bootstrap() {
   );
 
   //Iniciar el servidor y muestrar el puerto en el que se esta ejecutando
-  const port = configService.get<string>('PORT', '3002');
+  const port = configService.get<string>('PORT', '3001');
   await app.listen(port, '0.0.0.0');
 
   logger.log(`Application is running on: http://localhost:${port}`);
